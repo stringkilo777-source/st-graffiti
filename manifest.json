@@ -1,0 +1,10 @@
+{
+  "display_name": "ST Graffiti",
+  "name": "STGraffiti",
+  "id": "st-graffiti",
+  "version": "1.0.0",
+  "type": "extension",
+  "js": "index.js",
+  "css": "style.css",
+  "author": "stringkilo777"
+}
