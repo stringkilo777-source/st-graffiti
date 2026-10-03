@@ -7,7 +7,10 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
-var paletteHue = 0;
+var paletteH = 0;
+var paletteS = 1;
+var paletteV = 1;
+var recentColors = [];
 
 function getCtx() {
 try {
@@ -60,6 +63,7 @@ var fabST = 0;
 
 function startPlugin() {
 loadData();
+loadRecentColors();
 makeToast();
 makeFab();
 makeToolbar();
@@ -69,6 +73,59 @@ restoreAll();
 bindChatChange();
 observeNew();
 console.log('[STG] ready');
+}
+
+function loadRecentColors() {
+try {
+var raw = localStorage.getItem('stg_recent_colors');
+if (raw) {
+recentColors = JSON.parse(raw);
+if (!Array.isArray(recentColors)) recentColors = [];
+}
+} catch (e) {}
+}
+
+function saveRecentColors() {
+try {
+localStorage.setItem('stg_recent_colors', JSON.stringify(recentColors));
+} catch (e) {}
+}
+
+function addRecentColor(color) {
+if (!color || color === '#NaNNaNNaN') return;
+var idx = recentColors.indexOf(color);
+if (idx > -1) {
+recentColors.splice(idx, 1);
+}
+recentColors.unshift(color);
+if (recentColors.length > 6) {
+recentColors = recentColors.slice(0, 6);
+}
+saveRecentColors();
+updateRecentColorUI();
+}
+
+function updateRecentColorUI() {
+var container = document.getElementById('stg-recent-colors');
+if (!container) return;
+container.innerHTML = '';
+for (var i = 0; i < 6; i++) {
+var cell = document.createElement('div');
+cell.style.width = '24px';
+cell.style.height = '24px';
+cell.style.borderRadius = '50%';
+cell.style.border = '2px solid rgba(255,255,255,0.2)';
+cell.style.boxSizing = 'border-box';
+cell.style.cursor = 'pointer';
+cell.style.transition = 'transform 0.15s ease';
+if (i < recentColors.length) {
+cell.style.background = recentColors[i];
+cell.setAttribute('data-recent-color', recentColors[i]);
+} else {
+cell.style.background = 'rgba(255,255,255,0.1)';
+}
+container.appendChild(cell);
+}
 }
 
 function makeToast() {
@@ -265,6 +322,8 @@ panel.style.border = '2px solid rgba(255,133,157,0.4)';
 panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
+panel.style.maxHeight = '90vh';
+panel.style.overflowY = 'auto';
 
 var colors = [
 '#ff0000','#ff6600','#ffcc00','#33cc00',
@@ -273,27 +332,31 @@ var colors = [
 '#ff9999','#ffcc99','#99ff99','#99ccff'
 ];
 
+var labelPreset = document.createElement('div');
+labelPreset.textContent = '基本色';
+labelPreset.style.fontSize = '10px';
+labelPreset.style.color = '#888';
+labelPreset.style.marginBottom = '6px';
+labelPreset.style.userSelect = 'none';
+panel.appendChild(labelPreset);
+
 var grid = document.createElement('div');
 grid.style.display = 'grid';
 grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-grid.style.gap = '8px';
+grid.style.gap = '6px';
 grid.style.marginBottom = '12px';
 
 for (var i = 0; i < colors.length; i++) {
 var cell = document.createElement('div');
 cell.setAttribute('data-preset-color', colors[i]);
-cell.style.width = '32px';
-cell.style.height = '32px';
+cell.style.width = '24px';
+cell.style.height = '24px';
 cell.style.borderRadius = '50%';
 cell.style.background = colors[i];
-cell.style.border = '3px solid transparent';
+cell.style.border = '2px solid transparent';
 cell.style.boxSizing = 'border-box';
 cell.style.cursor = 'pointer';
 cell.style.transition = 'transform 0.15s ease, border-color 0.15s ease';
-if (colors[i] === penColor) {
-cell.style.borderColor = '#fff';
-cell.style.transform = 'scale(1.2)';
-}
 grid.appendChild(cell);
 }
 
@@ -305,22 +368,40 @@ if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
 var newColor = cell.getAttribute('data-preset-color');
-penColor = newColor;
-var allCells = grid.querySelectorAll('[data-preset-color]');
-for (var j = 0; j < allCells.length; j++) {
-allCells[j].style.borderColor = 'transparent';
-allCells[j].style.transform = 'scale(1)';
-}
-cell.style.borderColor = '#fff';
-cell.style.transform = 'scale(1.2)';
-toast('已选择: ' + newColor);
+applyColor(newColor);
 });
+
+var labelRecent = document.createElement('div');
+labelRecent.textContent = '记忆色';
+labelRecent.style.fontSize = '10px';
+labelRecent.style.color = '#888';
+labelRecent.style.marginBottom = '6px';
+labelRecent.style.userSelect = 'none';
+panel.appendChild(labelRecent);
+
+var recentRow = document.createElement('div');
+recentRow.id = 'stg-recent-colors';
+recentRow.style.display = 'flex';
+recentRow.style.gap = '6px';
+recentRow.style.marginBottom = '12px';
+panel.appendChild(recentRow);
+
+recentRow.addEventListener('click', function (e) {
+var cell = e.target.closest('[data-recent-color]');
+if (!cell) return;
+e.preventDefault();
+e.stopPropagation();
+var newColor = cell.getAttribute('data-recent-color');
+applyColor(newColor);
+});
+
+updateRecentColorUI();
 
 var ringWrap = document.createElement('div');
 ringWrap.style.position = 'relative';
 ringWrap.style.width = '180px';
 ringWrap.style.height = '180px';
-ringWrap.style.margin = '0 auto';
+ringWrap.style.margin = '0 auto 12px';
 
 var ringCv = document.createElement('canvas');
 ringCv.width = 180;
@@ -344,10 +425,8 @@ ringWrap.appendChild(sqCv);
 
 panel.appendChild(ringWrap);
 
-document.body.appendChild(panel);
-
 drawRing(ringCv);
-drawSquare(sqCv, paletteHue);
+drawSquare(sqCv, paletteH);
 
 var ringDown = false;
 var sqDown = false;
@@ -382,7 +461,91 @@ pickSquare(sqCv, e);
 sqCv.addEventListener('pointerup', function () { sqDown = false; });
 sqCv.addEventListener('pointercancel', function () { sqDown = false; });
 
+var labelHSV = document.createElement('div');
+labelHSV.textContent = 'HSV 调整';
+labelHSV.style.fontSize = '10px';
+labelHSV.style.color = '#888';
+labelHSV.style.marginBottom = '6px';
+labelHSV.style.userSelect = 'none';
+panel.appendChild(labelHSV);
+
+var hRow = makeSlider('H', 0, 360, paletteH, function (v) {
+paletteH = v;
+drawSquare(sqCv, paletteH);
+updateColorFromHSV();
+});
+panel.appendChild(hRow);
+
+var sRow = makeSlider('S', 0, 100, paletteS * 100, function (v) {
+paletteS = v / 100;
+updateColorFromHSV();
+});
+panel.appendChild(sRow);
+
+var vRow = makeSlider('V', 0, 100, paletteV * 100, function (v) {
+paletteV = v / 100;
+updateColorFromHSV();
+});
+panel.appendChild(vRow);
+
+document.body.appendChild(panel);
+
 console.log('[STG] 调色板已创建');
+}
+
+function makeSlider(label, min, max, val, onChange) {
+var row = document.createElement('div');
+row.style.display = 'flex';
+row.style.alignItems = 'center';
+row.style.gap = '8px';
+row.style.marginBottom = '6px';
+
+var lbl = document.createElement('div');
+lbl.textContent = label;
+lbl.style.fontSize = '11px';
+lbl.style.color = '#aaa';
+lbl.style.width = '12px';
+lbl.style.userSelect = 'none';
+row.appendChild(lbl);
+
+var slider = document.createElement('input');
+slider.type = 'range';
+slider.min = min;
+slider.max = max;
+slider.value = val;
+slider.style.flex = '1';
+slider.style.height = '4px';
+slider.style.cursor = 'pointer';
+row.appendChild(slider);
+
+var valTxt = document.createElement('div');
+valTxt.textContent = Math.round(val);
+valTxt.style.fontSize = '11px';
+valTxt.style.color = '#ccc';
+valTxt.style.width = '28px';
+valTxt.style.textAlign = 'right';
+valTxt.style.userSelect = 'none';
+row.appendChild(valTxt);
+
+slider.addEventListener('input', function () {
+var v = parseFloat(slider.value);
+valTxt.textContent = Math.round(v);
+onChange(v);
+});
+
+return row;
+}
+
+function applyColor(color) {
+penColor = color;
+addRecentColor(color);
+toast('已选择: ' + color);
+}
+
+function updateColorFromHSV() {
+var rgb = hsvToRgb(paletteH, paletteS, paletteV);
+var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+applyColor(hex);
 }
 
 function drawRing(cv) {
@@ -428,22 +591,18 @@ var dist = Math.sqrt(x * x + y * y);
 if (dist < 60 || dist > 90) return;
 var angle = Math.atan2(y, x) * 180 / Math.PI;
 if (angle < 0) angle += 360;
-paletteHue = angle;
-drawSquare(sqCv, paletteHue);
-var rgb = hsvToRgb(paletteHue, 1, 1);
-penColor = rgbToHex(rgb[0], rgb[1], rgb[2]);
-toast('已选择: ' + penColor);
+paletteH = angle;
+drawSquare(sqCv, paletteH);
+updateColorFromHSV();
 }
 
 function pickSquare(sqCv, e) {
 var rect = sqCv.getBoundingClientRect();
 var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
 var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-var sat = x / rect.width;
-var val = 1 - y / rect.height;
-var rgb = hsvToRgb(paletteHue, sat, val);
-penColor = rgbToHex(rgb[0], rgb[1], rgb[2]);
-toast('已选择: ' + penColor);
+paletteS = x / rect.width;
+paletteV = 1 - y / rect.height;
+updateColorFromHSV();
 }
 
 function hsvToRgb(h, s, v) {
