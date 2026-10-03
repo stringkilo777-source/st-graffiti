@@ -47,6 +47,7 @@ _c.eventSource.on(_c.event_types.APP_READY, fire);
 
 var drawing = false;
 var tool = 'pen';
+var brushType = 'normal';
 var penColor = '#ff0000';
 var penWidth = 3;
 var highlighterWidth = 18;
@@ -54,6 +55,8 @@ var eraserWidth = 16;
 var pressing = false;
 var lastCanvas = null;
 var currentStroke = null;
+var lastX = 0;
+var lastY = 0;
 var graffitiStore = {};
 var fabDragged = false;
 var fabSX = 0;
@@ -275,8 +278,7 @@ bar.id = 'stg-toolbar';
 var items = [
 {id: 'mouse', label: '\uD83D\uDDB1'},
 {id: 'sep1', sep: true},
-{id: 'pen', label: '\u270F'},
-{id: 'highlighter', label: '\uD83D\uDD8D'},
+{id: 'brush', label: '\uD83D\uDD8C'},
 {id: 'eraser', label: '\u2B55'},
 {id: 'sep2', sep: true},
 {id: 'color', isColor: true},
@@ -335,96 +337,99 @@ var panel = document.createElement('div');
 panel.id = 'stg-brush-panel';
 panel.style.position = 'fixed';
 panel.style.left = '60px';
-panel.style.bottom = '80px';
+panel.style.top = '50%';
+panel.style.transform = 'translateY(-50%)';
 panel.style.background = 'rgba(30,30,30,0.95)';
-panel.style.borderRadius = '12px';
+panel.style.borderRadius = '16px';
 panel.style.border = '2px solid rgba(255,133,157,0.4)';
 panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
-panel.style.minWidth = '160px';
 
-var label = document.createElement('div');
-label.textContent = '画笔粗细';
-label.style.fontSize = '10px';
-label.style.color = '#888';
-label.style.marginBottom = '8px';
-label.style.userSelect = 'none';
-panel.appendChild(label);
+var title = document.createElement('div');
+title.textContent = '画笔';
+title.style.fontSize = '11px';
+title.style.color = '#888';
+title.style.marginBottom = '8px';
+title.style.userSelect = 'none';
+panel.appendChild(title);
 
-var sliderRow = document.createElement('div');
-sliderRow.style.display = 'flex';
-sliderRow.style.alignItems = 'center';
-sliderRow.style.gap = '8px';
+var brushes = [
+{id: 'normal', name: '画笔'},
+{id: 'highlighter', name: '荧光笔'}
+];
 
-var slider = document.createElement('input');
-slider.type = 'range';
-slider.id = 'stg-brush-slider';
-slider.min = 1;
-slider.max = 50;
-slider.value = getToolWidth();
-slider.style.flex = '1';
-slider.style.cursor = 'pointer';
-sliderRow.appendChild(slider);
+for (var i = 0; i < brushes.length; i++) {
+var brush = brushes[i];
+var item = document.createElement('div');
+item.setAttribute('data-brush', brush.id);
+item.style.display = 'flex';
+item.style.alignItems = 'center';
+item.style.gap = '10px';
+item.style.padding = '8px';
+item.style.borderRadius = '8px';
+item.style.cursor = 'pointer';
+item.style.marginBottom = '4px';
+item.style.border = '2px solid transparent';
+item.style.transition = 'border-color 0.15s ease';
 
-var valTxt = document.createElement('div');
-valTxt.id = 'stg-brush-value';
-valTxt.textContent = getToolWidth();
-valTxt.style.fontSize = '11px';
-valTxt.style.color = '#ccc';
-valTxt.style.width = '24px';
-valTxt.style.textAlign = 'right';
-valTxt.style.userSelect = 'none';
-sliderRow.appendChild(valTxt);
-
-panel.appendChild(sliderRow);
-
-slider.addEventListener('input', function (e) {
-e.stopPropagation();
-var v = parseInt(slider.value);
-valTxt.textContent = v;
-if (tool === 'pen') {
-penWidth = v;
-} else if (tool === 'highlighter') {
-highlighterWidth = v;
-} else if (tool === 'eraser') {
-eraserWidth = v;
+if (brush.id === brushType) {
+item.style.borderColor = '#ff859d';
 }
-});
 
-slider.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-slider.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-slider.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-});
+var preview = document.createElement('div');
+preview.style.width = '28px';
+preview.style.height = '28px';
+preview.style.borderRadius = '50%';
+preview.style.flexShrink = '0';
+if (brush.id === 'normal') {
+preview.style.background = penColor;
+} else {
+preview.style.background = penColor;
+preview.style.opacity = '0.3';
+}
+item.appendChild(preview);
+
+var name = document.createElement('div');
+name.textContent = brush.name;
+name.style.fontSize = '13px';
+name.style.color = '#ccc';
+name.style.userSelect = 'none';
+item.appendChild(name);
+
+panel.appendChild(item);
+}
 
 document.body.appendChild(panel);
+
+panel.addEventListener('click', function (e) {
+e.preventDefault();
+e.stopPropagation();
+var item = e.target.closest('[data-brush]');
+if (!item) return;
+var bid = item.getAttribute('data-brush');
+brushType = bid;
+updateBrushHighlight();
+hideBrushPanel();
+toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
+});
 }
 
-function toggleBrushPanel() {
-var panel = document.getElementById('stg-brush-panel');
-if (!panel) return;
-var slider = document.getElementById('stg-brush-slider');
-var valTxt = document.getElementById('stg-brush-value');
-if (panel.style.display === 'block') {
-panel.style.display = 'none';
+function updateBrushHighlight() {
+var items = document.querySelectorAll('[data-brush]');
+for (var i = 0; i < items.length; i++) {
+var bid = items[i].getAttribute('data-brush');
+if (bid === brushType) {
+items[i].style.borderColor = '#ff859d';
 } else {
-var currentWidth = getToolWidth();
-if (slider) slider.value = currentWidth;
-if (valTxt) valTxt.textContent = currentWidth;
-panel.style.display = 'block';
+items[i].style.borderColor = 'transparent';
+}
 }
 }
 
 function hideBrushPanel() {
 var panel = document.getElementById('stg-brush-panel');
-if (panel) {
-panel.style.display = 'none';
-}
+if (panel) panel.style.display = 'none';
 }
 
 function makePalette() {
@@ -868,7 +873,7 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 
 function enterDraw() {
 drawing = true;
-tool = 'pen';
+tool = 'brush';
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
@@ -916,16 +921,20 @@ toast('调色板已打开');
 }
 return;
 }
-if (act === 'pen' || act === 'highlighter' || act === 'eraser') {
-if (tool === act) {
-toggleBrushPanel();
-return;
-} else {
-hideBrushPanel();
-}
-}
+if (act === 'brush') {
 var pp2 = document.getElementById('stg-palette');
 if (pp2) pp2.style.display = 'none';
+var bp = document.getElementById('stg-brush-panel');
+if (bp) {
+if (bp.style.display === 'block') {
+bp.style.display = 'none';
+} else {
+bp.style.display = 'block';
+toast('选择画笔');
+}
+}
+return;
+}
 tool = act;
 hilite();
 updatePointer();
@@ -935,7 +944,7 @@ function hilite() {
 var btns = document.querySelectorAll('.stg-btn');
 for (var i = 0; i < btns.length; i++) {
 var id = btns[i].getAttribute('data-stg');
-if (id === tool) {
+if (id === tool || (id === 'brush' && tool === 'brush')) {
 btns[i].classList.add('stg-on');
 } else {
 btns[i].classList.remove('stg-on');
@@ -978,7 +987,7 @@ return mes ? mes.getAttribute('mesid') : null;
 }
 
 function getToolWidth() {
-if (tool === 'highlighter') return highlighterWidth;
+if (brushType === 'highlighter') return highlighterWidth;
 if (tool === 'eraser') return eraserWidth;
 return penWidth;
 }
@@ -991,7 +1000,7 @@ ctx.globalCompositeOperation = 'destination-out';
 ctx.globalAlpha = 1;
 ctx.strokeStyle = 'rgba(0,0,0,1)';
 ctx.lineWidth = eraserWidth;
-} else if (tool === 'highlighter') {
+} else if (brushType === 'highlighter') {
 ctx.globalCompositeOperation = 'source-over';
 ctx.globalAlpha = 0.3;
 ctx.strokeStyle = penColor;
@@ -1012,7 +1021,7 @@ ctx.globalCompositeOperation = 'destination-out';
 ctx.globalAlpha = 1;
 ctx.strokeStyle = 'rgba(0,0,0,1)';
 ctx.lineWidth = stroke.size;
-} else if (stroke.tool === 'highlighter') {
+} else if (stroke.brushType === 'highlighter') {
 ctx.globalCompositeOperation = 'source-over';
 ctx.globalAlpha = 0.3;
 ctx.strokeStyle = stroke.color;
@@ -1026,9 +1035,6 @@ ctx.lineWidth = stroke.size;
 }
 
 function bindCanvas(cv) {
-var lastX = 0;
-var lastY = 0;
-
 cv.addEventListener('pointerdown', function (e) {
 if (!drawing || tool === 'mouse') return;
 e.preventDefault();
@@ -1040,6 +1046,7 @@ lastX = pos.x;
 lastY = pos.y;
 currentStroke = {
 tool: tool,
+brushType: brushType,
 color: penColor,
 size: getToolWidth(),
 points: [{x: pos.x / cv.width, y: pos.y / cv.height}]
@@ -1048,6 +1055,8 @@ var ctx = cv.getContext('2d');
 setBrush(ctx);
 ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
+ctx.lineTo(pos.x +0.5, pos.y + 0.5);
+ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
@@ -1056,28 +1065,22 @@ e.preventDefault();
 var pos = getPos(cv, e);
 var ctx = cv.getContext('2d');
 setBrush(ctx);
-
 var dx = pos.x - lastX;
 var dy = pos.y - lastY;
 var dist = Math.sqrt(dx * dx + dy * dy);
-if (dist > 2) {
-var cpx = lastX + dx * 0.5;
-var cpy = lastY + dy * 0.5;
-ctx.quadraticCurveTo(lastX, lastY, cpx, cpy);
-ctx.stroke();
-ctx.beginPath();
-ctx.moveTo(cpx, cpy);
-lastX = cpx;
-lastY = cpy;
-} else {
+var steps = Math.max(1, Math.floor(dist / 2));
+for (var s = 0; s < steps; s++) {
+var t = s / steps;
+var ix = lastX + dx * t;
+var iy = lastY + dy * t;
+ctx.lineTo(ix, iy);
+}
 ctx.lineTo(pos.x, pos.y);
 ctx.stroke();
 ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
 lastX = pos.x;
 lastY = pos.y;
-}
-
 if (currentStroke) {
 currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
 }
@@ -1126,17 +1129,7 @@ ctx.beginPath();
 var first = stroke.points[0];
 ctx.moveTo(first.x * w, first.y * h);
 for (var p = 1; p < stroke.points.length; p++) {
-var curr = stroke.points[p];
-if (p === 1) {
-ctx.lineTo(curr.x * w, curr.y * h);
-} else {
-var prev = stroke.points[p - 1];
-var cpx = prev.x * w;
-var cpy = prev.y * h;
-var endX = curr.x * w;
-var endY = curr.y * h;
-ctx.quadraticCurveTo(cpx, cpy, (cpx + endX) / 2, (cpy + endY) / 2);
-}
+ctx.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
 }
 ctx.stroke();
 }
@@ -1154,7 +1147,7 @@ if (mid !== null && graffitiStore[mid]) {
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
 }
 
 function saveData() {
