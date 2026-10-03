@@ -103,6 +103,7 @@ var shapeMode = null;
 var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
+var shapePreviewCanvas = null;
 
 function startPlugin() {
 loadData();
@@ -349,6 +350,7 @@ var items = [
 {id: 'undo', label: '↶'},
 {id: 'redo', label: '↷'},
 {id: 'sep3', sep: true},
+{id: 'utility', label: '🔧'},
 {id: 'color', isColor: true},
 {id: 'clear', label: '\uD83D\uDDD1'},
 {id: 'save', label: '\uD83D\uDCBE'},
@@ -429,7 +431,7 @@ btn.style.background = 'transparent';
 btn.style.color = '#ccc';
 btn.style.fontSize = '16px';
 btn.style.cursor = 'pointer';
-btn.style.transition = 'background0.15s ease';
+btn.style.transition = 'background 0.15s ease';
 menu.appendChild(btn);
 }
 
@@ -461,7 +463,7 @@ var bar = document.createElement('div');
 bar.id = 'stg-shape-toolbar';
 bar.style.position = 'fixed';
 bar.style.left = '50%';
-bar.style.bottom = '100px';
+bar.style.bottom = '20px';
 bar.style.transform = 'translateX(-50%) translateY(150%)';
 bar.style.display = 'flex';
 bar.style.gap = '6px';
@@ -474,8 +476,10 @@ bar.style.transition = 'transform 0.3s ease';
 
 var shapes = [
 {id: 'line', label: '—', title: '直线'},
+{id: 'wave', label: '~', title: '波浪线'},
 {id: 'rect', label: '▢', title: '矩形'},
 {id: 'ellipse', label: '○', title: '椭圆'},
+{id: 'curve', label: '⌢', title: '曲线'},
 {id: 'close', label: '✕', title: '关闭'}
 ];
 
@@ -535,8 +539,10 @@ e.stopPropagation();
 function getShapeName(id) {
 var names = {
 line: '直线',
+wave: '波浪线',
 rect: '矩形',
-ellipse: '椭圆'
+ellipse: '椭圆',
+curve: '曲线'
 };
 return names[id] || id;
 }
@@ -568,7 +574,7 @@ function activateEyedropper() {
 tool = 'eyedropper';
 hilite();
 updatePointer();
-toast('取色器已激活，点击已有涂鸦取色');
+toast('取色器已激活，点击文字上的涂鸦取色');
 }
 
 function updateColorIndicator() {
@@ -1075,7 +1081,7 @@ ringWrap.style.height = '180px';
 ringWrap.style.margin = '0 auto 12px';
 
 var ringCv = document.createElement('canvas');
-ringCv.width =180;
+ringCv.width = 180;
 ringCv.height = 180;
 ringCv.style.position = 'absolute';
 ringCv.style.top = '0';
@@ -1312,7 +1318,7 @@ applyColor(hex);
 
 function updateSquareCursor(sqCursor) {
 sqCursor.style.display = 'block';
-sqCursor.style.left = (40 + paletteS * 100- 5) + 'px';
+sqCursor.style.left = (40 + paletteS * 100 - 5) + 'px';
 sqCursor.style.top = (40 + (1 - paletteV) * 100 - 5) + 'px';
 }
 
@@ -1356,7 +1362,7 @@ var rect = ringCv.getBoundingClientRect();
 var x = e.clientX - rect.left - 90;
 var y = e.clientY - rect.top - 90;
 var dist = Math.sqrt(x * x + y * y);
-if (dist < 60|| dist > 90) return;
+if (dist < 60 || dist > 90) return;
 var angle = Math.atan2(y, x) * 180 / Math.PI;
 if (angle < 0) angle += 360;
 paletteH = angle;
@@ -1400,7 +1406,7 @@ var f = h * 6 - i;
 var p = v * (1 - s);
 var q = v * (1 - f * s);
 var u = v * (1 - (1 - f) * s);
-var r =0;
+var r = 0;
 var g = 0;
 var b = 0;
 switch (i % 6) {
@@ -1460,6 +1466,20 @@ if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
 if (act === 'undo') { undo(); return; }
 if (act === 'redo') { redo(); return; }
+if (act === 'utility') {
+hideBrushSettings();
+var pp = document.getElementById('stg-palette');
+if (pp) pp.style.display = 'none';
+var um = document.getElementById('stg-utility-menu');
+if (um) {
+if (um.style.display === 'flex') {
+um.style.display = 'none';
+} else {
+um.style.display = 'flex';
+}
+}
+return;
+}
 if (act === 'color') {
 hideBrushSettings();
 var um2 = document.getElementById('stg-utility-menu');
@@ -1503,7 +1523,7 @@ function hilite() {
 var btns = document.querySelectorAll('.stg-btn');
 for (var i = 0; i < btns.length; i++) {
 var id = btns[i].getAttribute('data-stg');
-if (id === tool || (tool === 'shape' && id === 'brush')) {
+if (id === tool) {
 btns[i].classList.add('stg-on');
 } else {
 btns[i].classList.remove('stg-on');
@@ -1599,6 +1619,7 @@ ctx.lineWidth = stroke.size;
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
 if (!drawing || tool === 'mouse') return;
+
 if (tool === 'eyedropper') {
 pickColorFromCanvas(cv, e);
 tool = 'brush';
@@ -1614,6 +1635,7 @@ cv.setPointerCapture(e.pointerId);
 var pos = getPos(cv, e);
 shapeStartX = pos.x;
 shapeStartY = pos.y;
+shapePreviewCanvas = cv;
 return;
 }
 e.preventDefault();
@@ -1635,12 +1657,12 @@ var ctx = cv.getContext('2d');
 setBrush(ctx);
 ctx.beginPath();
 ctx.moveTo(pos2.x, pos2.y);
-ctx.lineTo(pos2.x +0.5, pos2.y + 0.5);
+ctx.lineTo(pos2.x + 0.5, pos2.y + 0.5);
 ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
-if (shapeDrawing && cv === lastCanvas) {
+if (shapeDrawing && cv === shapePreviewCanvas) {
 return;
 }
 if (!pressing || cv !== lastCanvas) return;
@@ -1670,10 +1692,11 @@ currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
 });
 
 cv.addEventListener('pointerup', function (e) {
-if (shapeDrawing && cv === lastCanvas) {
+if (shapeDrawing && cv === shapePreviewCanvas) {
 var pos = getPos(cv, e);
 drawShape(cv, shapeStartX, shapeStartY, pos.x, pos.y);
 shapeDrawing = false;
+shapePreviewCanvas = null;
 lastCanvas = null;
 if (cv.hasPointerCapture(e.pointerId)) {
 cv.releasePointerCapture(e.pointerId);
@@ -1698,6 +1721,7 @@ currentStroke = null;
 cv.addEventListener('pointercancel', function () {
 pressing = false;
 shapeDrawing = false;
+shapePreviewCanvas = null;
 lastCanvas = null;
 currentStroke = null;
 });
@@ -1737,12 +1761,34 @@ var cy = (y1 + y2) / 2;
 var rx = Math.abs(x2 - x1) / 2;
 var ry = Math.abs(y2 - y1) / 2;
 ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-for (var a = 0; a <=360; a += 10) {
+for (var a = 0; a <= 360; a += 10) {
 var rad = a * Math.PI / 180;
 pts.push({
 x: (cx + rx * Math.cos(rad)) / cv.width,
 y: (cy + ry * Math.sin(rad)) / cv.height
 });
+}
+} else if (shapeMode === 'wave' || shapeMode === 'curve') {
+var dx = x2 - x1;
+var dy = y2 - y1;
+var len = Math.sqrt(dx * dx + dy * dy);
+var steps = Math.max(10, Math.floor(len / 5));
+ctx.moveTo(x1, y1);
+for (var i = 0; i <= steps; i++) {
+var t = i / steps;
+var ix = x1 + dx * t;
+var iy = y1 + dy * t;
+var offset = Math.sin(t * Math.PI * 3) * (len / 10);
+var perpX = -dy / len;
+var perpY = dx / len;
+var px = ix + perpX * offset;
+var py = iy + perpY * offset;
+if (i === 0) {
+ctx.moveTo(px, py);
+} else {
+ctx.lineTo(px, py);
+}
+pts.push({x: px / cv.width, y: py / cv.height});
 }
 }
 ctx.stroke();
@@ -1763,7 +1809,9 @@ function pickColorFromCanvas(cv, e) {
 var pos = getPos(cv, e);
 var ctx = cv.getContext('2d');
 try {
-var pixel = ctx.getImageData(Math.floor(pos.x), Math.floor(pos.y), 1, 1).data;
+var px = Math.max(0, Math.min(Math.floor(pos.x), cv.width - 1));
+var py = Math.max(0, Math.min(Math.floor(pos.y), cv.height - 1));
+var pixel = ctx.getImageData(px, py, 1, 1).data;
 if (pixel[3] < 10) {
 toast('该位置无涂鸦颜色');
 return;
@@ -1771,7 +1819,7 @@ return;
 var hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
 applyColor(hex);
 } catch (err) {
-toast('取色失败,请在有涂鸦的区域取色');
+toast('取色失败');
 console.warn('[STG] eyedropper error:', err);
 }
 }
