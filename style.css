@@ -91,7 +91,6 @@
   margin: 2px auto;
 }
 
-/*===== 颜色按钮小圆点 ===== */
 .stg-color-dot {
   width: 18px;
   height: 18px;
@@ -100,7 +99,6 @@
   box-sizing: border-box;
 }
 
-/* ===== 调色板面板 ===== */
 #stg-palette {
   position: fixed;
   left: 52px;
@@ -131,7 +129,6 @@
   user-select: none;
 }
 
-/*色环网格 */
 .stg-hue-ring {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -157,7 +154,6 @@
   transform: scale(1.1);
 }
 
-/* 明暗方块 */
 .stg-shade-label {
   font-size: 10px;
   color: #666;
@@ -189,7 +185,6 @@
   transform: scale(1.1);
 }
 
-/* ===== Toast===== */
 #stg-toast {
   position: fixed;
   top: 60px;
