@@ -251,24 +251,72 @@ onTool(tgt.getAttribute('data-stg'));
 }
 
 function makeTestPalette() {
+function makeTestPalette() {
 var panel = document.createElement('div');
 panel.id = 'stg-test-palette';
 panel.style.position = 'fixed';
-panel.style.left = '100px';
-panel.style.top = '200px';
-panel.style.width = '200px';
-panel.style.height = '200px';
-panel.style.background = 'red';
+panel.style.left = '60px';
+panel.style.top = '50%';
+panel.style.transform = 'translateY(-50%)';
+panel.style.background = 'rgba(30,30,30,0.95)';
+panel.style.borderRadius = '16px';
+panel.style.border = '2px solid rgba(255,133,157,0.4)';
+panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
-panel.textContent = '测试面板';
-panel.style.color = 'white';
-panel.style.fontSize = '20px';
-panel.style.display = 'flex';
-panel.style.alignItems = 'center';
-panel.style.justifyContent = 'center';
+
+var grid = document.createElement('div');
+grid.style.display = 'grid';
+grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+grid.style.gap = '8px';
+
+var colors = [
+'#ff0000','#ff6600','#ffcc00','#33cc00',
+'#00cccc','#0066ff','#6633ff','#cc00cc',
+'#ff3366','#996633','#ffffff','#000000',
+'#ff9999','#ffcc99','#99ff99','#99ccff'
+];
+
+for (var i = 0; i < colors.length; i++) {
+var cell = document.createElement('div');
+cell.setAttribute('data-color', colors[i]);
+cell.style.width = '32px';
+cell.style.height = '32px';
+cell.style.borderRadius = '50%';
+cell.style.background = colors[i];
+cell.style.border = '3px solid transparent';
+cell.style.boxSizing = 'border-box';
+cell.style.cursor = 'pointer';
+cell.style.transition = 'transform 0.15s ease, border-color 0.15s ease';
+if (colors[i] === penColor) {
+cell.style.borderColor = '#fff';
+cell.style.transform = 'scale(1.2)';
+}
+grid.appendChild(cell);
+}
+
+panel.appendChild(grid);
 document.body.appendChild(panel);
-console.log('[STG] 测试面板已创建，元素:', panel);
+
+grid.addEventListener('click', function (e) {
+var cell = e.target.closest('[data-color]');
+if (!cell) return;
+e.preventDefault();
+e.stopPropagation();
+var newColor = cell.getAttribute('data-color');
+penColor = newColor;
+var allCells = grid.querySelectorAll('[data-color]');
+for (var j = 0; j < allCells.length; j++) {
+allCells[j].style.borderColor = 'transparent';
+allCells[j].style.transform = 'scale(1)';
+}
+cell.style.borderColor = '#fff';
+cell.style.transform = 'scale(1.2)';
+toast('已选择颜色: ' + newColor);
+console.log('[STG] 已选颜色:', newColor);
+});
+
+console.log('[STG] 调色板已创建');
 }
 
 function enterDraw() {
