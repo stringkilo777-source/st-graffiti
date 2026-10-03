@@ -51,13 +51,17 @@
   var graffitiStore = {};
   var openPopup = null;
 
+  /* color HSV */
   var cHue = 0, cSat = 1, cVal = 1;
   var pickerTarget = null;
 
+  /* fab */
+  var fabLeft = -999;
+  var fabTop = -999;
   var fabDragged = false;
   var fabSX = 0, fabSY = 0, fabSL = 0, fabST = 0;
   var FAB_SIZE = 46;
-  var FAB_HIDE = 14;
+  var FAB_HIDE = 19;
 
   function startPlugin() {
     loadData();
@@ -66,7 +70,6 @@
     makeToolbar();
     makeColorPopup();
     makeSizePopup();
-    makeSettings();
     restoreAll();
     bindChatChange();
     observeNew();
@@ -88,88 +91,17 @@
     setTimeout(function () { el.classList.remove('stg-show'); }, ms || 2500);
   }
 
-  /* ---- settings panel with reset button ---- */
-  function makeSettings() {
-    try {
-      var container = document.getElementById('extensions_settings2');
-      if (!container) return;
-      if (document.getElementById('stg-settings')) return;
-
-      var div = document.createElement('div');
-      div.id = 'stg-settings';
-      div.innerHTML =
-        '<div style="margin:10px 0;padding:10px;border:1px solid rgba(255,133,157,0.3);border-radius:8px;background:rgba(30,30,30,0.5);">' +
-        '<h4 style="margin:0 0 8px 0;color:#ff859d;">ST Graffiti</h4>' +
-        '<button id="stg-reset-fab" style="padding:6px 14px;border:1px solid #ff859d;border-radius:6px;background:transparent;color:#ff859d;font-size:13px;">Reset FAB Position</button>' +
-        '</div>';
-      container.appendChild(div);
-
-      var resetBtn = document.getElementById('stg-reset-fab');
-      if (resetBtn) {
-        resetBtn.addEventListener('click', function () {
-          resetFabPosition();toast('FAB position reset!');
-        });
-      }
-    } catch (e) {
-      console.warn('[STG] settings error', e);
-    }
-  }
-
   /* ---- FAB ---- */
-  function getDefaultFabPos() {
-    return {
-      left: window.innerWidth - FAB_SIZE + FAB_HIDE,
-      top: window.innerHeight - 130
-    };
-  }
-
-  function loadFabPos() {
-    try {
-      var raw = localStorage.getItem('stg_fab_pos');
-      if (raw) {
-        var p = JSON.parse(raw);
-        if (typeof p.left === 'number' && typeof p.top === 'number') {
-          // make sure it's not completely off screen
-          if (p.left > -FAB_SIZE && p.left < window.innerWidth &&
-              p.top >= 0 && p.top < window.innerHeight) {
-            return p;
-          }
-        }
-      }
-    } catch (e) {}
-    return getDefaultFabPos();
-  }
-
-  function saveFabPos(l, t) {
-    try {
-      localStorage.setItem('stg_fab_pos', JSON.stringify({ left: l, top: t }));
-    } catch (e) {}
-  }
-
-  function resetFabPosition() {
-    var pos = getDefaultFabPos();
-    var fab = document.getElementById('stg-fab');
-    if (fab) {
-      fab.style.transition = 'left 0.3s ease, top 0.3s ease';
-      fab.style.left = pos.left + 'px';
-      fab.style.top = pos.top + 'px';
-      setTimeout(function () {
-        fab.style.transition = 'left 0.3s ease';}, 400);
-    }
-    saveFabPos(pos.left, pos.top);
-  }
-
   function makeFab() {
     if (document.getElementById('stg-fab')) return;
     var fab = document.createElement('div');
     fab.id = 'stg-fab';
     fab.textContent = '\u270F';
-
-    var pos = loadFabPos();
-    fab.style.left = pos.left + 'px';
-    fab.style.top = pos.top + 'px';
+    fabLeft = window.innerWidth - FAB_SIZE + FAB_HIDE;
+    fabTop = window.innerHeight - 130;
+    fab.style.left = fabLeft + 'px';
+    fab.style.top = fabTop + 'px';
     fab.style.transition = 'left 0.3s ease';
-
     document.body.appendChild(fab);
 
     fab.addEventListener('pointerdown', function (e) {
@@ -177,8 +109,8 @@
       fabDragged = false;
       fabSX = e.clientX;
       fabSY = e.clientY;
-      fabSL = parseInt(fab.style.left) || 0;
-      fabST = parseInt(fab.style.top) || 0;
+      fabSL = parseInt(fab.style.left) || fabLeft;
+      fabST = parseInt(fab.style.top) || fabTop;
       fab.setPointerCapture(e.pointerId);
       fab.style.transition = 'none';
     });
@@ -190,8 +122,7 @@
         fabDragged = true;
         var nl = fabSL + dx;
         var nt = fabST + dy;
-        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
-        nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
+        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
         fab.style.top = nt + 'px';}
     });
@@ -201,15 +132,13 @@
       if (fabDragged) {
         var currentL = parseInt(fab.style.left) || 0;
         var centerX = currentL + FAB_SIZE / 2;
-        var snapL;
         if (centerX < window.innerWidth / 2) {
-          snapL = -FAB_HIDE;
+          fab.style.left = (-FAB_HIDE) + 'px';
         } else {
-          snapL = window.innerWidth - FAB_SIZE + FAB_HIDE;
+          fab.style.left = (window.innerWidth - FAB_SIZE + FAB_HIDE) + 'px';
         }
-        fab.style.left = snapL + 'px';
-        var finalTop = parseInt(fab.style.top) || 0;
-        saveFabPos(snapL, finalTop);
+        fabLeft = parseInt(fab.style.left);
+        fabTop = parseInt(fab.style.top);
       }});
 
     fab.addEventListener('click', function (e) {
@@ -234,8 +163,7 @@
       { id: 'color', type: 'color' },
       { type: 'sep' },
       { id: 'clear', label: '\uD83D\uDDD1', type: 'btn' },
-      { id: 'save', label: '\uD83D\uDCBE', type: 'btn' },
-      { id: 'exit', label: '\u2716', type: 'btn' }
+      { id: 'save', label: '\uD83D\uDCBE', type: 'btn' },{ id: 'exit', label: '\u2716', type: 'btn' }
     ];
 
     for (var i = 0; i < items.length; i++) {
@@ -327,7 +255,7 @@
     var sx = cx - sq / 2, sy = cy - sq / 2;
     var gH = c.createLinearGradient(sx, sy, sx + sq, sy);
     gH.addColorStop(0, '#fff');
-    gH.addColorStop(1,'hsl(' + cHue + ',100%,50%)');
+    gH.addColorStop(1, 'hsl(' + cHue + ',100%,50%)');
     c.fillStyle = gH;
     c.fillRect(sx, sy, sq, sq);
 
@@ -343,8 +271,7 @@
     c.arc(px, py, 6, 0, Math.PI * 2);
     c.strokeStyle = '#fff';
     c.lineWidth = 2;
-    c.stroke();
-    c.beginPath();
+    c.stroke();c.beginPath();
     c.arc(px, py, 4, 0, Math.PI * 2);
     c.strokeStyle = '#000';
     c.lineWidth = 1;
@@ -357,7 +284,7 @@
     var y = (e.clientY - r.top) * (180 / r.height);
     var dx = x - 90, dy = y - 90;
     var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist >= 58&& dist <= 88) return'ring';
+    if (dist >= 58&& dist <= 88) return 'ring';
     if (Math.abs(x - 90) <= 38 && Math.abs(y - 90) <= 38) return 'square';
     return null;
   }
@@ -374,7 +301,7 @@
     } else if (pickerTarget === 'square') {
       var sq = 76, sx = 90 - sq / 2, sy = 90 - sq / 2;
       cSat = Math.max(0, Math.min(1, (x - sx) / sq));
-      cVal = Math.max(0, Math.min(1,1 - (y - sy) / sq));
+      cVal = Math.max(0, Math.min(1, 1 - (y - sy) / sq));
     }
 
     drawPicker(cvs);
@@ -435,8 +362,7 @@
   function setToolSize(v) {
     if (tool === 'highlighter') highlighterWidth = v;
     else if (tool === 'eraser') eraserWidth = v;
-    else penWidth = v;
-  }
+    else penWidth = v;}
 
   function updSizeDot(size) {
     var dot = document.getElementById('stg-sdot');
@@ -455,7 +381,8 @@
     if (!popup) return;
 
     if (popup.classList.contains('stg-show')) {
-      popup.classList.remove('stg-show');openPopup = null;
+      popup.classList.remove('stg-show');
+      openPopup = null;
       return;
     }
 
@@ -465,8 +392,7 @@
     var tbr = tb ? tb.getBoundingClientRect() : br;
     popup.style.left = (tbr.right + 8) + 'px';
     popup.style.top = Math.max(10, br.top - 20) + 'px';
-    popup.classList.add('stg-show');
-    openPopup = popup;
+    popup.classList.add('stg-show');openPopup = popup;
 
     requestAnimationFrame(function () {
       var pr = popup.getBoundingClientRect();
@@ -479,8 +405,7 @@
   function closePopups() {
     var all = document.querySelectorAll('.stg-popup.stg-show');
     for (var i = 0; i < all.length; i++) {
-      all[i].classList.remove('stg-show');
-    }
+      all[i].classList.remove('stg-show');}
     openPopup = null;
   }
 
@@ -528,7 +453,9 @@
       return;
     }
 
+    // drawing tools
     if (act === tool) {
+      // re-click same tool = show size popup
       if (act !== 'mouse') {
         var slider = document.getElementById('stg-sslider');
         if (slider) {
@@ -551,8 +478,7 @@
     for (var i = 0; i < btns.length; i++) {
       var id = btns[i].getAttribute('data-stg');
       if (id === tool) {
-        btns[i].classList.add('stg-on');
-      } else {
+        btns[i].classList.add('stg-on');} else {
         btns[i].classList.remove('stg-on');
       }
     }
@@ -746,141 +672,4 @@
     var keys = Object.keys(graffitiStore);
     for (var i = 0; i < keys.length; i++) {
       var d = graffitiStore[keys[i]];
-      if (!d.strokes || d.strokes.length === 0) {
-        delete graffitiStore[keys[i]];
-      }
-    }
-
-    var count = Object.keys(graffitiStore).length;
-    if (count > MAX_GRAFFITI) {
-      toast('Too many!(' + count + '/' + MAX_GRAFFITI + ') Clear some first.', 3500);
-      return;
-    }
-
-    try {
-      var c = getCtx();
-      if (c && c.chatMetadata) {
-        if (!c.chatMetadata.extensions) c.chatMetadata.extensions = {};
-        c.chatMetadata.extensions[PLUGIN_ID] = JSON.parse(JSON.stringify(graffitiStore));
-        try { if (c.saveChat) c.saveChat(); } catch (e) {}
-        try { if (window.saveChatConditional) window.saveChatConditional(); } catch (e) {}
-        try { if (window.saveChat) window.saveChat(); } catch (e) {}
-        try { if (c.saveMetadata) c.saveMetadata(); } catch (e) {}
-        try { if (window.saveMetadataDebounced) window.saveMetadataDebounced(); } catch (e) {}
-      }
-    } catch (e) {
-      console.warn('[STG] save error', e);
-    }
-
-    try {
-      var cid = getChatId();
-      if (cid) {
-        localStorage.setItem('stg_' + cid, JSON.stringify(graffitiStore));
-      }
-    } catch (e) {}
-
-    toast('Saved!(' + count + '/' + MAX_GRAFFITI + ')');
-  }
-
-  /* ---- load ---- */
-  function loadData() {
-    graffitiStore = {};
-    try {
-      var c = getCtx();
-      if (c && c.chatMetadata && c.chatMetadata.extensions && c.chatMetadata.extensions[PLUGIN_ID]) {
-        graffitiStore = JSON.parse(JSON.stringify(c.chatMetadata.extensions[PLUGIN_ID]));
-        return;
-      }
-    } catch (e) {}
-
-    try {
-      var cid = getChatId();
-      if (cid) {
-        var raw = localStorage.getItem('stg_' + cid);
-        if (raw) graffitiStore = JSON.parse(raw);
-      }
-    } catch (e) {}
-  }
-
-  function getChatId() {
-    try {
-      var c = getCtx();
-      if (c && c.chatId) return String(c.chatId);
-      if (c && c.characters && c.activeCharacter !== undefined) {
-        return 'char_' + c.activeCharacter;
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  /* ---- restore ---- */
-  function restoreAll() {
-    var keys = Object.keys(graffitiStore);
-    for (var i = 0; i < keys.length; i++) {
-      var mid = keys[i];
-      var mes = document.querySelector('#chat .mes[mesid="' + mid + '"]');
-      if (!mes) continue;
-      var cv = setupCanvas(mes);
-      if (!cv) continue;
-      redrawCanvas(cv, graffitiStore[mid]);
-    }
-  }
-
-  /* ---- chat change ---- */
-  function bindChatChange() {
-    try {
-      var c = getCtx();
-      if (c && c.eventSource && c.event_types) {
-        var evt = c.event_types.CHAT_CHANGED || c.event_types.CHATLOADED;
-        if (evt) {
-          c.eventSource.on(evt, function () {
-            exitDraw();
-            loadData();restoreAll();
-          });
-        }
-      }
-    } catch (e) {}
-  }
-
-  /* ---- observe new ---- */
-  function observeNew() {
-    var chat = document.getElementById('chat');
-    if (!chat) return;
-
-    var obs = new MutationObserver(function (muts) {
-      for (var m = 0; m < muts.length; m++) {
-        var added = muts[m].addedNodes;
-        for (var n = 0; n < added.length; n++) {
-          var node = added[n];
-          if (node.nodeType !== 1) continue;
-          var mes = null;
-          if (node.classList && node.classList.contains('mes')) {
-            mes = node;
-          } else if (node.querySelector) {
-            mes = node.querySelector('.mes');
-          }
-          if (!mes) continue;
-
-          var mid = mes.getAttribute('mesid');
-          if (mid && graffitiStore[mid]) {
-            var cv = setupCanvas(mes);
-            if (cv) redrawCanvas(cv, graffitiStore[mid]);
-          } else if (drawing) {
-            setupCanvas(mes);
-          }
-        }
-      }
-    });
-
-    obs.observe(chat, { childList: true, subtree: true });
-  }
-
-  /* ---- global click close popups ---- */
-  document.addEventListener('click', function (e) {
-    if (!openPopup) return;
-    if (e.target.closest('.stg-popup')) return;
-    if (e.target.closest('[data-stg]')) return;
-    closePopups();
-  });
-
-})();
+      if (!d.
