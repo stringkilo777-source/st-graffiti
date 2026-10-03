@@ -106,13 +106,45 @@
 
     var wrapper = document.createElement('div');
     wrapper.id = 'stg-settings-panel';
-    wrapper.style.cssText = 'margin:5px 0;padding:12px;border:1px solid rgba(255,133,157,0.3);border-radius:10px;background:rgba(30,30,30,0.3);';
+    wrapper.className = 'inline-drawer';
     wrapper.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
-        '<b style="color:#ff859d;">ST Graffiti</b>' +'</div>' +
-      '<button id="stg-reset-btn" class="menu_button" style="width:100%;">Reset FAB Position</button>' +
-      '<small style="display:block;margin-top:4px;color:#999;">If the floating button is lost, click to bring it back.</small>';
+      '<div class="inline-drawer-toggle inline-drawer-header" id="stg-drawer-toggle">' +
+        '<b>ST Graffiti</b>' +
+        '<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>' +
+      '</div>' +
+      '<div class="inline-drawer-content" id="stg-drawer-content">' +
+        '<div style="padding:8px 0;">' +
+          '<button id="stg-reset-btn" class="menu_button" style="width:100%;">' +
+            '\uD83D\uDCCD \u91CD\u7F6E\u60AC\u6D6E\u7403\u4F4D\u7F6E' +
+          '</button>' +
+          '<small style="display:block;margin-top:6px;color:#999;">' +
+            '\u5982\u679C\u60AC\u6D6E\u7403\u4E22\u5931\u6216\u5361\u5728\u5C4F\u5E55\u5916\uFF0C\u70B9\u6B64\u6309\u94AE\u53EF\u4EE5\u628A\u5B83\u627E\u56DE\u6765\u3002' +
+          '</small>' +
+        '</div>' +
+      '</div>';
     container.appendChild(wrapper);
+
+    var toggle = document.getElementById('stg-drawer-toggle');
+    var content = document.getElementById('stg-drawer-content');
+    if (toggle && content) {
+      content.style.display = 'none';
+      toggle.addEventListener('click', function () {
+        var icon = toggle.querySelector('.inline-drawer-icon');
+        if (content.style.display === 'none') {
+          content.style.display = 'block';
+          if (icon) {
+            icon.classList.remove('down');
+            icon.classList.add('up');
+          }
+        } else {
+          content.style.display = 'none';
+          if (icon) {
+            icon.classList.remove('up');
+            icon.classList.add('down');
+          }
+        }
+      });
+    }
 
     var resetBtn = document.getElementById('stg-reset-btn');
     if (resetBtn) {
@@ -156,12 +188,13 @@
     if (fab) {
       fab.style.transition = 'left 0.3s ease, top 0.3s ease';
       fab.style.left = pos.left + 'px';
-      fab.style.top = pos.top + 'px';fab.style.display = 'flex';
+      fab.style.top = pos.top + 'px';
+      fab.style.display = 'flex';
       setTimeout(function () {
         fab.style.transition = 'left 0.3s ease';}, 400);
     }
     saveFabPos(pos.left, pos.top);
-    toast('FAB position reset!');
+    toast('\u60AC\u6D6E\u7403\u5DF2\u91CD\u7F6E\uFF01');
   }
 
   function makeFab() {
@@ -194,8 +227,9 @@
       if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
         fabDragged = true;
         var nl = fabSL + dx;
-        varnt = fabST + dy;
-        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
+        var nt = fabST + dy;
+        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
+        nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
         fab.style.top = nt + 'px';}
     });
@@ -371,7 +405,8 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
@@ -503,12 +538,13 @@
     var all = document.querySelectorAll('.stg-canvas');
     for (var i = 0; i < all.length; i++) {
       var ctx = all[i].getContext('2d');
-      ctx.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
+      ctx.clearRect(0, 0, all[i].width, all[i].height);
+      var mid = getMesId(all[i]);
       if (mid !== null && graffitiStore[mid]) {
         graffitiStore[mid].strokes = [];
       }
     }
-    toast('Cleared all graffiti');
+    toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
   }
 
   function saveData() {
@@ -522,7 +558,7 @@
 
     var count = Object.keys(graffitiStore).length;
     if (count > MAX_GRAFFITI) {
-      toast('Too many!(' + count + '/' + MAX_GRAFFITI + ') Clear some first.', 3500);
+      toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI +') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
       return;
     }
 
@@ -550,7 +586,7 @@
       }
     } catch (e) {}
 
-    toast('Saved!(' + count + '/' + MAX_GRAFFITI + ')');
+    toast('\u5DF2\u4FDD\u5B58\uFF01(' + count + '/' + MAX_GRAFFITI + ')');
   }
 
   function loadData() {
