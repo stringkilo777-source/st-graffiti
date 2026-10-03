@@ -402,6 +402,16 @@ panel.appendChild(item);
 
 document.body.appendChild(panel);
 
+panel.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+panel.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+panel.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+});
+
 panel.addEventListener('click', function (e) {
 e.preventDefault();
 e.stopPropagation();
@@ -409,10 +419,8 @@ var item = e.target.closest('[data-brush]');
 if (!item) return;
 var bid = item.getAttribute('data-brush');
 brushType = bid;
-tool = 'brush';
 updateBrushHighlight();
 hideBrushPanel();
-hilite();
 toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
 });
 }
@@ -875,9 +883,7 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 
 function enterDraw() {
 drawing = true;
-if (tool !== 'mouse' && tool !== 'eraser' && tool !== 'brush') {
 tool = 'brush';
-}
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
