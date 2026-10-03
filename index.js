@@ -7,7 +7,7 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
-var paletteH = 0;
+var paletteHue = 0;
 var paletteS = 1;
 var paletteV = 1;
 var recentColors = [];
@@ -344,16 +344,6 @@ panel.style.zIndex = '9999999';
 panel.style.display = 'none';
 panel.style.maxHeight = '90vh';
 panel.style.overflowY = 'auto';
-
-panel.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-});
 
 var colors = [
 '#ff0000','#ff6600','#ffcc00','#33cc00',
@@ -775,6 +765,7 @@ var msgs = document.querySelectorAll('#chat .mes');
 for (var i = 0; i < msgs.length; i++) {
 setupCanvas(msgs[i]);
 }
+console.log('[STG] 进入涂鸦模式, drawing=' + drawing + ', tool=' + tool);
 }
 
 function exitDraw() {
@@ -792,6 +783,7 @@ var all = document.querySelectorAll('.stg-canvas');
 for (var i = 0; i < all.length; i++) {
 all[i].classList.remove('stg-active');
 }
+console.log('[STG] 退出涂鸦模式');
 }
 
 function onTool(act) {
@@ -814,6 +806,7 @@ return;
 tool = act;
 hilite();
 updatePointer();
+console.log('[STG] 切换工具: ' + tool);
 }
 
 function hilite() {
@@ -854,6 +847,7 @@ cv.height = mt.clientHeight || 100;
 if (drawing && tool !== 'mouse') cv.classList.add('stg-active');
 mt.appendChild(cv);
 bindCanvas(cv);
+console.log('[STG] 创建canvas: ' + cv.width + 'x' + cv.height + ', active=' + cv.classList.contains('stg-active'));
 return cv;
 }
 
@@ -912,6 +906,7 @@ ctx.lineWidth = stroke.size;
 
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
+console.log('[STG] canvas pointerdown, drawing=' + drawing + ', tool=' + tool);
 if (!drawing || tool === 'mouse') return;
 e.preventDefault();
 pressing = true;
@@ -930,6 +925,7 @@ ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
 ctx.lineTo(pos.x +0.5, pos.y + 0.5);
 ctx.stroke();
+console.log('[STG] 开始画笔');
 });
 
 cv.addEventListener('pointermove', function (e) {
@@ -955,6 +951,7 @@ if (!graffitiStore[mid]) {
 graffitiStore[mid] = {strokes: []};
 }
 graffitiStore[mid].strokes.push(currentStroke);
+console.log('[STG] 笔画已保存');
 }
 }
 pressing = false;
