@@ -5,7 +5,6 @@
   var MAX_GRAFFITI = 10;
   var initDone = false;
 
-  /* ---- safe context ---- */
   function getCtx() {
     try {
       if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
@@ -15,7 +14,6 @@
     return null;
   }
 
-  /* ---- init ---- */
   function fire() {
     if (initDone) return;
     initDone = true;
@@ -49,12 +47,17 @@
   var eraserWidth = 16;
   var pressing = false;
   var lastCanvas = null;
-
-  // stroke recording
   var currentStroke = null;
   var graffitiStore = {};
 
-  /* ---- plugin start ---- */
+  /* ---- fab state ---- */
+  var fabLeft = -999;
+  var fabTop = -999;
+  var fabDragged = false;
+  var fabSX = 0, fabSY = 0, fabSL = 0, fabST = 0;
+  var FAB_SIZE = 46;
+  var FAB_HIDE = 18;
+
   function startPlugin() {
     loadData();
     makeToast();
@@ -81,28 +84,32 @@
     setTimeout(function () { el.classList.remove('stg-show'); }, ms || 2500);
   }
 
-  /* ---- FAB with drag ---- */
-  var fabRight = 16;
-  var fabBottom = 80;
-  var fabDragged = false;
-  var fabSX = 0, fabSY = 0, fabSR = 0, fabSB = 0;
-
+  /* ---- FAB ---- */
   function makeFab() {
     if (document.getElementById('stg-fab')) return;
     var fab = document.createElement('div');
     fab.id = 'stg-fab';
     fab.textContent = '\u270F';
-    fab.style.right = fabRight + 'px';
-    fab.style.bottom = fabBottom + 'px';
+
+    // initial position: right side, partially hidden
+    fabLeft = window.innerWidth - FAB_SIZE + FAB_HIDE;
+    fabTop = window.innerHeight - 130;
+    fab.style.left = fabLeft + 'px';
+    fab.style.top = fabTop + 'px';
+    fab.style.transition = 'left 0.3s ease';
+
     document.body.appendChild(fab);
 
     fab.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
       fabDragged = false;
       fabSX = e.clientX;
       fabSY = e.clientY;
-      fabSR = parseInt(fab.style.right) || fabRight;
-      fabSB = parseInt(fab.style.bottom) || fabBottom;
+      fabSL = parseInt(fab.style.left) || fabLeft;
+      fabST = parseInt(fab.style.top) || fabTop;
       fab.setPointerCapture(e.pointerId);
+      // disable transition while dragging
+      fab.style.transition = 'none';
     });
 
     fab.addEventListener('pointermove', function (e) {
@@ -110,29 +117,33 @@
       var dy = e.clientY - fabSY;
       if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
         fabDragged = true;
-        var nr = Math.max(0, Math.min(window.innerWidth - 50, fabSR - dx));
-        var nb = Math.max(0, Math.min(window.innerHeight - 50, fabSB - dy));
-        fab.style.right = nr + 'px';
-        fab.style.bottom = nb + 'px';
+        var nl = fabSL + dx;
+        var nt = fabST + dy;
+        // allow going partially off screen edges
+        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
+        nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
+        fab.style.left = nl + 'px';
+        fab.style.top = nt + 'px';
       }
     });
 
     fab.addEventListener('pointerup', function () {
+      // re-enable transition for smooth snap
+      fab.style.transition = 'left 0.3s ease';
+
       if (fabDragged) {
-        // snap to nearest edge
-        var r = parseInt(fab.style.right) ||0;
-        var fabX = window.innerWidth - r - 23;
-        if (fabX < window.innerWidth / 2) {
-          // closer to left
-          fab.style.right = (window.innerWidth - 50) + 'px';
+        // snap to nearest edge (partially hidden)
+        var currentL = parseInt(fab.style.left) ||0;
+        var centerX = currentL + FAB_SIZE / 2;
+
+        if (centerX < window.innerWidth / 2) {
+          // snap to left edge
+          fab.style.left = (-FAB_HIDE) + 'px';
         } else {
-          // closer to right
-          fab.style.right = '4px';
-        }
-        fabRight = parseInt(fab.style.right);
-        fabBottom = parseInt(fab.style.bottom);
-      }
-    });
+          // snap to right edge
+          fab.style.left = (window.innerWidth - FAB_SIZE + FAB_HIDE) + 'px';
+        }fabLeft = parseInt(fab.style.left);fabTop = parseInt(fab.style.top);
+      }});
 
     fab.addEventListener('click', function (e) {
       if (fabDragged) { e.stopPropagation(); return; }
@@ -247,7 +258,7 @@
     }
   }
 
-  /* ---- canvas setup ---- */
+  /* ---- canvas ---- */
   function setupCanvas(mesEl) {
     var mt = mesEl.querySelector('.mes_text');
     if (!mt) return null;
@@ -282,8 +293,7 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-out';ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
@@ -389,7 +399,7 @@
     };
   }
 
-  /* ---- redraw from saved strokes ---- */
+  /* ---- redraw ---- */
   function redrawCanvas(cv, data) {
     var ctx = cv.getContext('2d');
     ctx.clearRect(0, 0, cv.width, cv.height);
@@ -399,7 +409,6 @@
     for (var s = 0; s < data.strokes.length; s++) {
       var stroke = data.strokes[s];
       if (!stroke.points || stroke.points.length < 1) continue;
-
       setupBrushFor(ctx, stroke);
       ctx.beginPath();
       var first = stroke.points[0];
@@ -411,8 +420,7 @@
     }
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
+    ctx.globalAlpha = 1;}
 
   /* ---- clear ---- */
   function clearAll() {
@@ -428,9 +436,8 @@
     toast('Cleared all graffiti');
   }
 
-  /* ---- data: save ---- */
+  /* ---- save ---- */
   function saveData() {
-    // remove empty entries
     var keys = Object.keys(graffitiStore);
     for (var i = 0; i < keys.length; i++) {
       var d = graffitiStore[keys[i]];
@@ -441,11 +448,10 @@
 
     var count = Object.keys(graffitiStore).length;
     if (count > MAX_GRAFFITI) {
-      toast('Too many!(' + count + '/' + MAX_GRAFFITI + ') Clear some first.', 3500);
+      toast('Too many!(' + count + '/' + MAX_GRAFFITI +') Clear some first.', 3500);
       return;
     }
 
-    // save to chat metadata
     try {
       var c = getCtx();
       if (c && c.chatMetadata) {
@@ -458,10 +464,9 @@
         try { if (window.saveMetadataDebounced) window.saveMetadataDebounced(); } catch (e) {}
       }
     } catch (e) {
-      console.warn('[STG] save meta error', e);
+      console.warn('[STG] save error', e);
     }
 
-    // localStorage backup
     try {
       var cid = getChatId();
       if (cid) {
@@ -472,10 +477,9 @@
     toast('Saved! (' + count + '/' + MAX_GRAFFITI + ')');
   }
 
-  /* ---- data: load ---- */
+  /* ---- load ---- */
   function loadData() {
     graffitiStore = {};
-    // try chat metadata first
     try {
       var c = getCtx();
       if (c && c.chatMetadata && c.chatMetadata.extensions && c.chatMetadata.extensions[PLUGIN_ID]) {
@@ -484,7 +488,6 @@
       }
     } catch (e) {}
 
-    // fallback to localStorage
     try {
       var cid = getChatId();
       if (cid) {
@@ -505,7 +508,7 @@
     return null;
   }
 
-  /* ---- restore canvases from saved data ---- */
+  /* ---- restore ---- */
   function restoreAll() {
     var keys = Object.keys(graffitiStore);
     for (var i = 0; i < keys.length; i++) {
@@ -518,7 +521,7 @@
     }
   }
 
-  /* ---- chat change listener ---- */
+  /* ---- chat change ---- */
   function bindChatChange() {
     try {
       var c = getCtx();
@@ -535,7 +538,7 @@
     } catch (e) {}
   }
 
-  /* ---- observe new messages ---- */
+  /* ---- observe new ---- */
   function observeNew() {
     var chat = document.getElementById('chat');
     if (!chat) return;
