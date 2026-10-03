@@ -278,7 +278,7 @@ var items = [
 {id: 'highlighter', label: '\uD83D\uDD8D'},
 {id: 'eraser', label: '\u2B55'},
 {id: 'sep2', sep: true},
-{id: 'color', label: '\uD83C\uDFA8'},
+{id: 'color', isColor: true},
 {id: 'clear', label: '\uD83D\uDDD1'},
 {id: 'save', label: '\uD83D\uDCBE'},
 {id: 'exit', label: '\u2716'}
@@ -294,7 +294,20 @@ bar.appendChild(sep);
 var btn = document.createElement('button');
 btn.className = 'stg-btn';
 btn.setAttribute('data-stg', item.id);
+if (item.isColor) {
+btn.id = 'stg-color-btn';
+var colorBox = document.createElement('div');
+colorBox.id = 'stg-color-indicator';
+colorBox.style.width = '20px';
+colorBox.style.height = '20px';
+colorBox.style.borderRadius = '4px';
+colorBox.style.background = penColor;
+colorBox.style.border = '2px solid rgba(255,255,255,0.6)';
+colorBox.style.boxSizing = 'border-box';
+btn.appendChild(colorBox);
+} else {
 btn.textContent = item.label;
+}
 bar.appendChild(btn);
 }
 }
@@ -306,6 +319,13 @@ var tgt = e.target.closest('[data-stg]');
 if (!tgt) return;
 onTool(tgt.getAttribute('data-stg'));
 });
+}
+
+function updateColorIndicator() {
+var indicator = document.getElementById('stg-color-indicator');
+if (indicator) {
+indicator.style.background = penColor;
+}
 }
 
 function makePalette() {
@@ -324,6 +344,16 @@ panel.style.zIndex = '9999999';
 panel.style.display = 'none';
 panel.style.maxHeight = '90vh';
 panel.style.overflowY = 'auto';
+
+panel.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+panel.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+panel.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+});
 
 var colors = [
 '#ff0000','#ff6600','#ffcc00','#33cc00',
@@ -363,10 +393,10 @@ grid.appendChild(cell);
 panel.appendChild(grid);
 
 grid.addEventListener('click', function (e) {
-var cell = e.target.closest('[data-preset-color]');
-if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
+var cell = e.target.closest('[data-preset-color]');
+if (!cell) return;
 var newColor = cell.getAttribute('data-preset-color');
 applyColor(newColor);
 });
@@ -387,10 +417,10 @@ recentRow.style.marginBottom = '12px';
 panel.appendChild(recentRow);
 
 recentRow.addEventListener('click', function (e) {
-var cell = e.target.closest('[data-recent-color]');
-if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
+var cell = e.target.closest('[data-recent-color]');
+if (!cell) return;
 var newColor = cell.getAttribute('data-recent-color');
 applyColor(newColor);
 });
@@ -413,6 +443,18 @@ ringCv.style.borderRadius = '50%';
 ringCv.style.touchAction = 'none';
 ringWrap.appendChild(ringCv);
 
+var ringCursor = document.createElement('div');
+ringCursor.id = 'stg-ring-cursor';
+ringCursor.style.position = 'absolute';
+ringCursor.style.width = '10px';
+ringCursor.style.height = '10px';
+ringCursor.style.border = '2px solid white';
+ringCursor.style.borderRadius = '50%';
+ringCursor.style.boxSizing = 'border-box';
+ringCursor.style.pointerEvents = 'none';
+ringCursor.style.display = 'none';
+ringWrap.appendChild(ringCursor);
+
 var sqCv = document.createElement('canvas');
 sqCv.width = 100;
 sqCv.height = 100;
@@ -422,6 +464,18 @@ sqCv.style.left = '40px';
 sqCv.style.borderRadius = '4px';
 sqCv.style.touchAction = 'none';
 ringWrap.appendChild(sqCv);
+
+var sqCursor = document.createElement('div');
+sqCursor.id = 'stg-sq-cursor';
+sqCursor.style.position = 'absolute';
+sqCursor.style.width = '10px';
+sqCursor.style.height = '10px';
+sqCursor.style.border = '2px solid white';
+sqCursor.style.borderRadius = '50%';
+sqCursor.style.boxSizing = 'border-box';
+sqCursor.style.pointerEvents = 'none';
+sqCursor.style.display = 'none';
+ringWrap.appendChild(sqCursor);
 
 panel.appendChild(ringWrap);
 
@@ -435,31 +489,43 @@ ringCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 ringDown = true;
-pickRing(ringCv, sqCv, e);
+pickRing(ringCv, sqCv, ringCursor, e);
 });
 ringCv.addEventListener('pointermove', function (e) {
 if (!ringDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickRing(ringCv, sqCv, e);
+pickRing(ringCv, sqCv, ringCursor, e);
 });
-ringCv.addEventListener('pointerup', function () { ringDown = false; });
-ringCv.addEventListener('pointercancel', function () { ringDown = false; });
+ringCv.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+ringDown = false;
+});
+ringCv.addEventListener('pointercancel', function (e) {
+e.stopPropagation();
+ringDown = false;
+});
 
 sqCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 sqDown = true;
-pickSquare(sqCv, e);
+pickSquare(sqCv, sqCursor, e);
 });
 sqCv.addEventListener('pointermove', function (e) {
 if (!sqDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickSquare(sqCv, e);
+pickSquare(sqCv, sqCursor, e);
 });
-sqCv.addEventListener('pointerup', function () { sqDown = false; });
-sqCv.addEventListener('pointercancel', function () { sqDown = false; });
+sqCv.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+sqDown = false;
+});
+sqCv.addEventListener('pointercancel', function (e) {
+e.stopPropagation();
+sqDown = false;
+});
 
 var labelHSV = document.createElement('div');
 labelHSV.textContent = 'HSV 调整';
@@ -473,18 +539,21 @@ var hRow = makeSlider('H', 0, 360, paletteH, function (v) {
 paletteH = v;
 drawSquare(sqCv, paletteH);
 updateColorFromHSV();
+updateSquareCursor(sqCursor);
 });
 panel.appendChild(hRow);
 
 var sRow = makeSlider('S', 0, 100, paletteS * 100, function (v) {
 paletteS = v / 100;
 updateColorFromHSV();
+updateSquareCursor(sqCursor);
 });
 panel.appendChild(sRow);
 
 var vRow = makeSlider('V', 0, 100, paletteV * 100, function (v) {
 paletteV = v / 100;
 updateColorFromHSV();
+updateSquareCursor(sqCursor);
 });
 panel.appendChild(vRow);
 
@@ -527,10 +596,21 @@ valTxt.style.textAlign = 'right';
 valTxt.style.userSelect = 'none';
 row.appendChild(valTxt);
 
-slider.addEventListener('input', function () {
+slider.addEventListener('input', function (e) {
+e.stopPropagation();
 var v = parseFloat(slider.value);
 valTxt.textContent = Math.round(v);
 onChange(v);
+});
+
+slider.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+slider.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+slider.addEventListener('pointerup', function (e) {
+e.stopPropagation();
 });
 
 return row;
@@ -539,6 +619,7 @@ return row;
 function applyColor(color) {
 penColor = color;
 addRecentColor(color);
+updateColorIndicator();
 toast('已选择: ' + color);
 }
 
@@ -546,6 +627,12 @@ function updateColorFromHSV() {
 var rgb = hsvToRgb(paletteH, paletteS, paletteV);
 var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
 applyColor(hex);
+}
+
+function updateSquareCursor(sqCursor) {
+sqCursor.style.display = 'block';
+sqCursor.style.left = (40 + paletteS * 100 - 5) + 'px';
+sqCursor.style.top = (40 + (1 - paletteV) * 100 - 5) + 'px';
 }
 
 function drawRing(cv) {
@@ -583,7 +670,7 @@ ctx.fillRect(x, y, 1, 1);
 }
 }
 
-function pickRing(ringCv, sqCv, e) {
+function pickRing(ringCv, sqCv, ringCursor, e) {
 var rect = ringCv.getBoundingClientRect();
 var x = e.clientX - rect.left - 90;
 var y = e.clientY - rect.top - 90;
@@ -594,15 +681,25 @@ if (angle < 0) angle += 360;
 paletteH = angle;
 drawSquare(sqCv, paletteH);
 updateColorFromHSV();
+
+var rad = angle * Math.PI / 180;
+var cursorDist = 79;
+ringCursor.style.display = 'block';
+ringCursor.style.left = (90 + cursorDist * Math.cos(rad) - 5) + 'px';
+ringCursor.style.top = (90 + cursorDist * Math.sin(rad) - 5) + 'px';
 }
 
-function pickSquare(sqCv, e) {
+function pickSquare(sqCv, sqCursor, e) {
 var rect = sqCv.getBoundingClientRect();
 var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
 var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
 paletteS = x / rect.width;
 paletteV = 1 - y / rect.height;
 updateColorFromHSV();
+
+sqCursor.style.display = 'block';
+sqCursor.style.left = (40 + x - 5) + 'px';
+sqCursor.style.top = (40 + y - 5) + 'px';
 }
 
 function hsvToRgb(h, s, v) {
