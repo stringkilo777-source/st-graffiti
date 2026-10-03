@@ -57,19 +57,12 @@ var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
 
-var STG_COLORS = [
-'#ff0000','#ff6600','#ffcc00','#33cc00',
-'#00cccc','#0066ff','#6633ff','#cc00cc',
-'#ff3366','#996633','#ffffff','#000000',
-'#ff9999','#ffcc99','#99ff99','#99ccff'
-];
-
 function startPlugin() {
 loadData();
 makeToast();
 makeFab();
 makeToolbar();
-makePalette();
+makeTestPalette();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -257,63 +250,25 @@ onTool(tgt.getAttribute('data-stg'));
 });
 }
 
-function makePalette() {
-if (document.getElementById('stg-palette')) return;
+function makeTestPalette() {
 var panel = document.createElement('div');
-panel.id = 'stg-palette';
-panel.style.display = 'none';
+panel.id = 'stg-test-palette';
 panel.style.position = 'fixed';
-panel.style.left = '52px';
-panel.style.top = '50%';
-panel.style.transform = 'translateY(-50%)';
-panel.style.background = 'rgba(30,30,30,0.95)';
-panel.style.borderRadius = '16px';
-panel.style.border = '1px solid rgba(255,133,157,0.25)';
-panel.style.padding = '10px';
-panel.style.zIndex = '2000001';
-panel.style.boxShadow = '4px 0 20px rgba(0,0,0,0.5)';
-
-var grid = document.createElement('div');
-grid.style.display = 'grid';
-grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-grid.style.gap = '6px';
-
-for (var i = 0; i < STG_COLORS.length; i++) {
-var cell = document.createElement('div');
-cell.setAttribute('data-stg-color', STG_COLORS[i]);
-cell.style.width = '30px';
-cell.style.height = '30px';
-cell.style.borderRadius = '50%';
-cell.style.background = STG_COLORS[i];
-cell.style.border = '2px solid transparent';
-cell.style.boxSizing = 'border-box';
-cell.style.cursor = 'pointer';
-if (STG_COLORS[i] === penColor) {
-cell.style.borderColor = '#fff';
-cell.style.transform = 'scale(1.15)';
-}
-grid.appendChild(cell);
-}
-panel.appendChild(grid);
+panel.style.left = '100px';
+panel.style.top = '200px';
+panel.style.width = '200px';
+panel.style.height = '200px';
+panel.style.background = 'red';
+panel.style.zIndex = '9999999';
+panel.style.display = 'none';
+panel.textContent = '测试面板';
+panel.style.color = 'white';
+panel.style.fontSize = '20px';
+panel.style.display = 'flex';
+panel.style.alignItems = 'center';
+panel.style.justifyContent = 'center';
 document.body.appendChild(panel);
-
-grid.addEventListener('click', function (e) {
-var cell = e.target.closest('[data-stg-color]');
-if (!cell) return;
-e.preventDefault();
-e.stopPropagation();
-penColor = cell.getAttribute('data-stg-color');
-var allCells = grid.querySelectorAll('[data-stg-color]');
-for (var j = 0; j < allCells.length; j++) {
-allCells[j].style.borderColor = 'transparent';
-allCells[j].style.transform = 'scale(1)';
-}
-cell.style.borderColor = '#fff';
-cell.style.transform = 'scale(1.15)';
-console.log('[STG] 已选颜色:', penColor);
-});
-
-console.log('[STG] 调色板创建完成');
+console.log('[STG] 测试面板已创建，元素:', panel);
 }
 
 function enterDraw() {
@@ -335,8 +290,8 @@ drawing = false;
 pressing = false;
 lastCanvas = null;
 currentStroke = null;
-var pp = document.getElementById('stg-palette');
-if (pp) pp.style.display = 'none';
+var testPanel = document.getElementById('stg-test-palette');
+if (testPanel) testPanel.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -352,20 +307,21 @@ if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
 if (act === 'color') {
-var pp = document.getElementById('stg-palette');
-if (pp) {
-if (pp.style.display === 'block') {
-pp.style.display = 'none';
-console.log('[STG] 调色板已隐藏');
+var testPanel = document.getElementById('stg-test-palette');
+console.log('[STG] 点击调色板按钮，面板元素:', testPanel);
+if (testPanel) {
+if (testPanel.style.display === 'flex') {
+testPanel.style.display = 'none';
+console.log('[STG] 隐藏面板');
+toast('调色板已关闭');
 } else {
-pp.style.display = 'block';
-console.log('[STG] 调色板已显示');
+testPanel.style.display = 'flex';
+console.log('[STG] 显示面板');
+toast('调色板已打开');
 }
 }
 return;
 }
-var pp2 = document.getElementById('stg-palette');
-if (pp2) pp2.style.display = 'none';
 tool = act;
 hilite();
 updatePointer();
