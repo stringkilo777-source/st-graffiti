@@ -1,8 +1,11 @@
 {
   "display_name": "ST Graffiti",
+  "name": "ST Graffiti",
+  "id": "st-graffiti",
   "loading_order": 1,
   "requires": [],
   "optional": [],
+  "type": "extension",
   "js": "index.js",
   "css": "style.css",
   "author": "stringkilo777",
