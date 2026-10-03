@@ -49,20 +49,27 @@
   var lastCanvas = null;
   var currentStroke = null;
   var graffitiStore = {};
+  var openPopup = null;
 
-  /* ---- fab state ---- */
+  /* color HSV */
+  var cHue = 0, cSat = 1, cVal = 1;
+  var pickerTarget = null;
+
+  /* fab */
   var fabLeft = -999;
   var fabTop = -999;
   var fabDragged = false;
   var fabSX = 0, fabSY = 0, fabSL = 0, fabST = 0;
   var FAB_SIZE = 46;
-  var FAB_HIDE = 18;
+  var FAB_HIDE = 26;
 
   function startPlugin() {
     loadData();
     makeToast();
     makeFab();
     makeToolbar();
+    makeColorPopup();
+    makeSizePopup();
     restoreAll();
     bindChatChange();
     observeNew();
@@ -90,14 +97,11 @@
     var fab = document.createElement('div');
     fab.id = 'stg-fab';
     fab.textContent = '\u270F';
-
-    // initial position: right side, partially hidden
     fabLeft = window.innerWidth - FAB_SIZE + FAB_HIDE;
     fabTop = window.innerHeight - 130;
     fab.style.left = fabLeft + 'px';
     fab.style.top = fabTop + 'px';
     fab.style.transition = 'left 0.3s ease';
-
     document.body.appendChild(fab);
 
     fab.addEventListener('pointerdown', function (e) {
@@ -108,7 +112,6 @@
       fabSL = parseInt(fab.style.left) || fabLeft;
       fabST = parseInt(fab.style.top) || fabTop;
       fab.setPointerCapture(e.pointerId);
-      // disable transition while dragging
       fab.style.transition = 'none';
     });
 
@@ -119,30 +122,23 @@
         fabDragged = true;
         var nl = fabSL + dx;
         var nt = fabST + dy;
-        // allow going partially off screen edges
-        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
-        nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
+        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
-        fab.style.top = nt + 'px';
-      }
+        fab.style.top = nt + 'px';}
     });
 
     fab.addEventListener('pointerup', function () {
-      // re-enable transition for smooth snap
       fab.style.transition = 'left 0.3s ease';
-
       if (fabDragged) {
-        // snap to nearest edge (partially hidden)
-        var currentL = parseInt(fab.style.left) ||0;
+        var currentL = parseInt(fab.style.left) || 0;
         var centerX = currentL + FAB_SIZE / 2;
-
         if (centerX < window.innerWidth / 2) {
-          // snap to left edge
           fab.style.left = (-FAB_HIDE) + 'px';
         } else {
-          // snap to right edge
           fab.style.left = (window.innerWidth - FAB_SIZE + FAB_HIDE) + 'px';
-        }fabLeft = parseInt(fab.style.left);fabTop = parseInt(fab.style.top);
+        }
+        fabLeft = parseInt(fab.style.left);
+        fabTop = parseInt(fab.style.top);
       }});
 
     fab.addEventListener('click', function (e) {
@@ -164,9 +160,10 @@
       { id: 'highlighter', label: '\uD83D\uDD8D', type: 'btn' },
       { id: 'eraser', label: '\u2B55', type: 'btn' },
       { type: 'sep' },
+      { id: 'color', type: 'color' },
+      { type: 'sep' },
       { id: 'clear', label: '\uD83D\uDDD1', type: 'btn' },
-      { id: 'save', label: '\uD83D\uDCBE', type: 'btn' },
-      { id: 'exit', label: '\u2716', type: 'btn' }
+      { id: 'save', label: '\uD83D\uDCBE', type: 'btn' },{ id: 'exit', label: '\u2716', type: 'btn' }
     ];
 
     for (var i = 0; i < items.length; i++) {
@@ -175,12 +172,18 @@
         var sep = document.createElement('div');
         sep.className = 'stg-sep';
         bar.appendChild(sep);
-      } else {
+      } else if (item.type === 'color') {
         var btn = document.createElement('button');
         btn.className = 'stg-btn';
-        btn.setAttribute('data-stg', item.id);
-        btn.textContent = item.label;
+        btn.setAttribute('data-stg', 'color');
+        btn.innerHTML = '<div id="stg-color-dot" style="background:' + penColor + '"></div>';
         bar.appendChild(btn);
+      } else {
+        var btn2 = document.createElement('button');
+        btn2.className = 'stg-btn';
+        btn2.setAttribute('data-stg', item.id);
+        btn2.textContent = item.label;
+        bar.appendChild(btn2);
       }
     }
 
@@ -189,8 +192,221 @@
     bar.addEventListener('click', function (e) {
       var t = e.target.closest('[data-stg]');
       if (!t) return;
-      onTool(t.getAttribute('data-stg'));
+      onTool(t.getAttribute('data-stg'), t);
     });
+  }
+
+  /* ---- color popup ---- */
+  function makeColorPopup() {
+    if (document.getElementById('stg-color-popup')) return;
+    var popup = document.createElement('div');
+    popup.className = 'stg-popup';
+    popup.id = 'stg-color-popup';
+    popup.innerHTML =
+      '<canvas id="stg-picker" width="180" height="180"></canvas>' +
+      '<div class="stg-preview-row">' +
+      '<div class="stg-preview-swatch" id="stg-swatch" style="background:' + penColor + '"></div>' +
+      '</div>';
+    document.body.appendChild(popup);
+
+    var cvs = document.getElementById('stg-picker');
+    drawPicker(cvs);
+
+    cvs.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      cvs.setPointerCapture(e.pointerId);
+      pickerTarget = hitPicker(cvs, e);
+      doPick(cvs, e);
+    });cvs.addEventListener('pointermove', function (e) {
+      if (!pickerTarget) return;
+      e.preventDefault();
+      doPick(cvs, e);
+    });
+    cvs.addEventListener('pointerup', function () {
+      pickerTarget = null;
+    });
+  }
+
+  function drawPicker(cvs) {
+    var c = cvs.getContext('2d');
+    var cx = 90, cy = 90, oR = 85, iR = 62;
+    c.clearRect(0, 0, 180, 180);
+
+    for (var a = 0; a < 360; a++) {
+      var s1 = (a - 1) * Math.PI / 180;
+      var s2 = (a + 1) * Math.PI / 180;
+      c.beginPath();
+      c.arc(cx, cy, oR, s1, s2);
+      c.arc(cx, cy, iR, s2, s1, true);
+      c.closePath();
+      c.fillStyle = 'hsl(' + a + ',100%,50%)';
+      c.fill();
+    }
+
+    var hRad = cHue * Math.PI / 180;
+    var mR = (oR + iR) / 2;
+    c.beginPath();
+    c.arc(cx + Math.cos(hRad) * mR, cy + Math.sin(hRad) * mR, 7, 0, Math.PI * 2);
+    c.strokeStyle = '#fff';
+    c.lineWidth = 2.5;
+    c.stroke();
+
+    var sq = 76;
+    var sx = cx - sq / 2, sy = cy - sq / 2;
+    var gH = c.createLinearGradient(sx, sy, sx + sq, sy);
+    gH.addColorStop(0, '#fff');
+    gH.addColorStop(1, 'hsl(' + cHue + ',100%,50%)');
+    c.fillStyle = gH;
+    c.fillRect(sx, sy, sq, sq);
+
+    var gV = c.createLinearGradient(sx, sy, sx, sy + sq);
+    gV.addColorStop(0, 'rgba(0,0,0,0)');
+    gV.addColorStop(1, '#000');
+    c.fillStyle = gV;
+    c.fillRect(sx, sy, sq, sq);
+
+    var px = sx + cSat * sq;
+    var py = sy + (1 - cVal) * sq;
+    c.beginPath();
+    c.arc(px, py, 6, 0, Math.PI * 2);
+    c.strokeStyle = '#fff';
+    c.lineWidth = 2;
+    c.stroke();c.beginPath();
+    c.arc(px, py, 4, 0, Math.PI * 2);
+    c.strokeStyle = '#000';
+    c.lineWidth = 1;
+    c.stroke();
+  }
+
+  function hitPicker(cvs, e) {
+    var r = cvs.getBoundingClientRect();
+    var x = (e.clientX - r.left) * (180 / r.width);
+    var y = (e.clientY - r.top) * (180 / r.height);
+    var dx = x - 90, dy = y - 90;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist >= 58&& dist <= 88) return 'ring';
+    if (Math.abs(x - 90) <= 38 && Math.abs(y - 90) <= 38) return 'square';
+    return null;
+  }
+
+  function doPick(cvs, e) {
+    var r = cvs.getBoundingClientRect();
+    var x = (e.clientX - r.left) * (180 / r.width);
+    var y = (e.clientY - r.top) * (180 / r.height);
+
+    if (pickerTarget === 'ring') {
+      var ang = Math.atan2(y - 90, x - 90) * 180 / Math.PI;
+      if (ang < 0) ang += 360;
+      cHue = ang;
+    } else if (pickerTarget === 'square') {
+      var sq = 76, sx = 90 - sq / 2, sy = 90 - sq / 2;
+      cSat = Math.max(0, Math.min(1, (x - sx) / sq));
+      cVal = Math.max(0, Math.min(1, 1 - (y - sy) / sq));
+    }
+
+    drawPicker(cvs);
+    penColor = hsvToHex(cHue, cSat, cVal);
+    var dot = document.getElementById('stg-color-dot');
+    if (dot) dot.style.background = penColor;
+    var sw = document.getElementById('stg-swatch');
+    if (sw) sw.style.background = penColor;
+  }
+
+  function hsvToHex(h, s, v) {
+    var i = Math.floor(h / 60) % 6;
+    var f = h / 60 - Math.floor(h / 60);
+    var p = v * (1 - s);
+    var q = v * (1 - f * s);
+    var t = v * (1 - (1 - f) * s);
+    var r, g, b;
+    switch (i) {
+      case 0: r = v; g = t; b = p; break;
+      case 1: r = q; g = v; b = p; break;
+      case 2: r = p; g = v; b = t; break;
+      case 3: r = p; g = q; b = v; break;
+      case 4: r = t; g = p; b = v; break;
+      default: r = v; g = p; b = q;
+    }
+    return '#' + [r, g, b].map(function (c) {
+      return Math.round(c * 255).toString(16).padStart(2, '0');
+    }).join('');
+  }
+
+  /* ---- size popup ---- */
+  function makeSizePopup() {
+    if (document.getElementById('stg-size-popup')) return;
+    var popup = document.createElement('div');
+    popup.className = 'stg-popup';
+    popup.id = 'stg-size-popup';
+    popup.innerHTML =
+      '<div class="stg-size-row">' +
+      '<div class="stg-size-dot" id="stg-sdot"></div>' +
+      '<input type="range" class="stg-slider" id="stg-sslider" min="1" max="40" value="3">' +
+      '<span class="stg-size-label" id="stg-slabel">3px</span>' +
+      '</div>';
+    document.body.appendChild(popup);
+
+    var slider = document.getElementById('stg-sslider');
+    slider.addEventListener('input', function () {
+      var v = parseInt(slider.value);
+      setToolSize(v);
+      updSizeDot(v);
+    });}
+
+  function getToolSize() {
+    if (tool === 'highlighter') return highlighterWidth;
+    if (tool === 'eraser') return eraserWidth;
+    return penWidth;
+  }
+
+  function setToolSize(v) {
+    if (tool === 'highlighter') highlighterWidth = v;
+    else if (tool === 'eraser') eraserWidth = v;
+    else penWidth = v;}
+
+  function updSizeDot(size) {
+    var dot = document.getElementById('stg-sdot');
+    var lbl = document.getElementById('stg-slabel');
+    if (dot) {
+      var d = Math.max(4, Math.min(size, 32));
+      dot.style.width = d + 'px';
+      dot.style.height = d + 'px';
+    }
+    if (lbl) lbl.textContent = size + 'px';
+  }
+
+  /* ---- popup position ---- */
+  function showPopup(id, btn) {
+    var popup = document.getElementById(id);
+    if (!popup) return;
+
+    if (popup.classList.contains('stg-show')) {
+      popup.classList.remove('stg-show');
+      openPopup = null;
+      return;
+    }
+
+    closePopups();
+    var br = btn.getBoundingClientRect();
+    var tb = document.getElementById('stg-toolbar');
+    var tbr = tb ? tb.getBoundingClientRect() : br;
+    popup.style.left = (tbr.right + 8) + 'px';
+    popup.style.top = Math.max(10, br.top - 20) + 'px';
+    popup.classList.add('stg-show');openPopup = popup;
+
+    requestAnimationFrame(function () {
+      var pr = popup.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight - 10) {
+        popup.style.top = Math.max(10, window.innerHeight - pr.height - 10) + 'px';
+      }
+    });
+  }
+
+  function closePopups() {
+    var all = document.querySelectorAll('.stg-popup.stg-show');
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.remove('stg-show');}
+    openPopup = null;
   }
 
   /* ---- enter / exit ---- */
@@ -214,6 +430,7 @@
     pressing = false;
     lastCanvas = null;
     currentStroke = null;
+    closePopups();
     var bar = document.getElementById('stg-toolbar');
     if (bar) bar.classList.remove('stg-show');
     var fab = document.getElementById('stg-fab');
@@ -226,10 +443,31 @@
   }
 
   /* ---- tool selection ---- */
-  function onTool(act) {
+  function onTool(act, btn) {
     if (act === 'exit') { exitDraw(); return; }
     if (act === 'save') { saveData(); return; }
     if (act === 'clear') { clearAll(); return; }
+
+    if (act === 'color') {
+      showPopup('stg-color-popup', btn);
+      return;
+    }
+
+    // drawing tools
+    if (act === tool) {
+      // re-click same tool = show size popup
+      if (act !== 'mouse') {
+        var slider = document.getElementById('stg-sslider');
+        if (slider) {
+          slider.value = getToolSize();
+          updSizeDot(getToolSize());
+        }
+        showPopup('stg-size-popup', btn);
+      }
+      return;
+    }
+
+    closePopups();
     tool = act;
     hilite();
     updatePointer();
@@ -240,8 +478,7 @@
     for (var i = 0; i < btns.length; i++) {
       var id = btns[i].getAttribute('data-stg');
       if (id === tool) {
-        btns[i].classList.add('stg-on');
-      } else {
+        btns[i].classList.add('stg-on');} else {
         btns[i].classList.remove('stg-on');
       }
     }
@@ -282,18 +519,13 @@
     return mes ? mes.getAttribute('mesid') : null;
   }
 
-  /* ---- drawing ---- */
-  function getToolWidth() {
-    if (tool === 'highlighter') return highlighterWidth;
-    if (tool === 'eraser') return eraserWidth;
-    return penWidth;
-  }
-
+  /* ---- brush ---- */
   function setBrush(ctx) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
@@ -342,7 +574,7 @@
       currentStroke = {
         tool: tool,
         color: penColor,
-        size: getToolWidth(),
+        size: getToolSize(),
         points: [{ x: pos.x / cv.width, y: pos.y / cv.height }]
       };
 
@@ -403,8 +635,7 @@
   function redrawCanvas(cv, data) {
     var ctx = cv.getContext('2d');
     ctx.clearRect(0, 0, cv.width, cv.height);
-    var w = cv.width;
-    var h = cv.height;
+    var w = cv.width, h = cv.height;
 
     for (var s = 0; s < data.strokes.length; s++) {
       var stroke = data.strokes[s];
@@ -441,134 +672,4 @@
     var keys = Object.keys(graffitiStore);
     for (var i = 0; i < keys.length; i++) {
       var d = graffitiStore[keys[i]];
-      if (!d.strokes || d.strokes.length === 0) {
-        delete graffitiStore[keys[i]];
-      }
-    }
-
-    var count = Object.keys(graffitiStore).length;
-    if (count > MAX_GRAFFITI) {
-      toast('Too many!(' + count + '/' + MAX_GRAFFITI +') Clear some first.', 3500);
-      return;
-    }
-
-    try {
-      var c = getCtx();
-      if (c && c.chatMetadata) {
-        if (!c.chatMetadata.extensions) c.chatMetadata.extensions = {};
-        c.chatMetadata.extensions[PLUGIN_ID] = JSON.parse(JSON.stringify(graffitiStore));
-        try { if (c.saveChat) c.saveChat(); } catch (e) {}
-        try { if (window.saveChatConditional) window.saveChatConditional(); } catch (e) {}
-        try { if (window.saveChat) window.saveChat(); } catch (e) {}
-        try { if (c.saveMetadata) c.saveMetadata(); } catch (e) {}
-        try { if (window.saveMetadataDebounced) window.saveMetadataDebounced(); } catch (e) {}
-      }
-    } catch (e) {
-      console.warn('[STG] save error', e);
-    }
-
-    try {
-      var cid = getChatId();
-      if (cid) {
-        localStorage.setItem('stg_' + cid, JSON.stringify(graffitiStore));
-      }
-    } catch (e) {}
-
-    toast('Saved! (' + count + '/' + MAX_GRAFFITI + ')');
-  }
-
-  /* ---- load ---- */
-  function loadData() {
-    graffitiStore = {};
-    try {
-      var c = getCtx();
-      if (c && c.chatMetadata && c.chatMetadata.extensions && c.chatMetadata.extensions[PLUGIN_ID]) {
-        graffitiStore = JSON.parse(JSON.stringify(c.chatMetadata.extensions[PLUGIN_ID]));
-        return;
-      }
-    } catch (e) {}
-
-    try {
-      var cid = getChatId();
-      if (cid) {
-        var raw = localStorage.getItem('stg_' + cid);
-        if (raw) graffitiStore = JSON.parse(raw);
-      }
-    } catch (e) {}
-  }
-
-  function getChatId() {
-    try {
-      var c = getCtx();
-      if (c && c.chatId) return String(c.chatId);
-      if (c && c.characters && c.activeCharacter !== undefined) {
-        return 'char_' + c.activeCharacter;
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  /* ---- restore ---- */
-  function restoreAll() {
-    var keys = Object.keys(graffitiStore);
-    for (var i = 0; i < keys.length; i++) {
-      var mid = keys[i];
-      var mes = document.querySelector('#chat .mes[mesid="' + mid + '"]');
-      if (!mes) continue;
-      var cv = setupCanvas(mes);
-      if (!cv) continue;
-      redrawCanvas(cv, graffitiStore[mid]);
-    }
-  }
-
-  /* ---- chat change ---- */
-  function bindChatChange() {
-    try {
-      var c = getCtx();
-      if (c && c.eventSource && c.event_types) {
-        var evt = c.event_types.CHAT_CHANGED || c.event_types.CHATLOADED;
-        if (evt) {
-          c.eventSource.on(evt, function () {
-            exitDraw();
-            loadData();
-            restoreAll();
-          });
-        }
-      }
-    } catch (e) {}
-  }
-
-  /* ---- observe new ---- */
-  function observeNew() {
-    var chat = document.getElementById('chat');
-    if (!chat) return;
-
-    var obs = new MutationObserver(function (muts) {
-      for (var m = 0; m < muts.length; m++) {
-        var added = muts[m].addedNodes;
-        for (var n = 0; n < added.length; n++) {
-          var node = added[n];
-          if (node.nodeType !== 1) continue;
-          var mes = null;
-          if (node.classList && node.classList.contains('mes')) {
-            mes = node;
-          } else if (node.querySelector) {
-            mes = node.querySelector('.mes');
-          }
-          if (!mes) continue;
-
-          var mid = mes.getAttribute('mesid');
-          if (mid && graffitiStore[mid]) {
-            var cv = setupCanvas(mes);
-            if (cv) redrawCanvas(cv, graffitiStore[mid]);
-          } else if (drawing) {
-            setupCanvas(mes);
-          }
-        }
-      }
-    });
-
-    obs.observe(chat, { childList: true, subtree: true });
-  }
-
-})();
+      if (!d.
