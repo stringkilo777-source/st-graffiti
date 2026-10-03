@@ -62,7 +62,7 @@ loadData();
 makeToast();
 makeFab();
 makeToolbar();
-makeTestPalette();
+makePalette();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -250,10 +250,10 @@ onTool(tgt.getAttribute('data-stg'));
 });
 }
 
-function makeTestPalette() {
-function makeTestPalette() {
+function makePalette() {
+if (document.getElementById('stg-palette')) return;
 var panel = document.createElement('div');
-panel.id = 'stg-test-palette';
+panel.id = 'stg-palette';
 panel.style.position = 'fixed';
 panel.style.left = '60px';
 panel.style.top = '50%';
@@ -338,8 +338,8 @@ drawing = false;
 pressing = false;
 lastCanvas = null;
 currentStroke = null;
-var testPanel = document.getElementById('stg-test-palette');
-if (testPanel) testPanel.style.display = 'none';
+var pp = document.getElementById('stg-palette');
+if (pp) pp.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -355,16 +355,15 @@ if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
 if (act === 'color') {
-var testPanel = document.getElementById('stg-test-palette');
-console.log('[STG] 点击调色板按钮，面板元素:', testPanel);
-if (testPanel) {
-if (testPanel.style.display === 'flex') {
-testPanel.style.display = 'none';
-console.log('[STG] 隐藏面板');
+var pp = document.getElementById('stg-palette');
+if (pp) {
+if (pp.style.display === 'block') {
+pp.style.display = 'none';
+console.log('[STG] 调色板已隐藏');
 toast('调色板已关闭');
 } else {
-testPanel.style.display = 'flex';
-console.log('[STG] 显示面板');
+pp.style.display = 'block';
+console.log('[STG] 调色板已显示');
 toast('调色板已打开');
 }
 }
