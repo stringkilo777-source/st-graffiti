@@ -65,7 +65,7 @@
     makeToast();
     makeFab();
     makeToolbar();
-    makeSettingsPanel();
+    loadSettingsHtml();
     restoreAll();
     bindChatChange();
     observeNew();
@@ -88,69 +88,19 @@
     }, ms || 2500);
   }
 
-  function makeSettingsPanel() {
-    if (document.getElementById('stg-settings-panel')) return;
-
-    var targets = [
-      document.getElementById('extensions_settings2'),
-      document.getElementById('extensions_settings')
-    ];
-    var container = null;
-    for (var i = 0; i < targets.length; i++) {
-      if (targets[i]) {
-        container = targets[i];
-        break;
+  function loadSettingsHtml() {
+    try {
+      var url = 'scripts/extensions/third-party/st-graffiti/settings.html';
+      if (typeof jQuery !== 'undefined') {
+        jQuery.get(url, function (html) {
+          jQuery('#extensions_settings2').append(html);
+          jQuery('#stg-reset-btn').on('click', function () {
+            resetFabPosition();
+          });
+        });
       }
-    }
-    if (!container) return;
-
-    var wrapper = document.createElement('div');
-    wrapper.id = 'stg-settings-panel';
-    wrapper.className = 'inline-drawer';
-    wrapper.innerHTML =
-      '<div class="inline-drawer-toggle inline-drawer-header" id="stg-drawer-toggle">' +
-        '<b>ST Graffiti</b>' +
-        '<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>' +
-      '</div>' +
-      '<div class="inline-drawer-content" id="stg-drawer-content">' +
-        '<div style="padding:8px 0;">' +
-          '<button id="stg-reset-btn" class="menu_button" style="width:100%;">' +
-            '\uD83D\uDCCD \u91CD\u7F6E\u60AC\u6D6E\u7403\u4F4D\u7F6E' +
-          '</button>' +
-          '<small style="display:block;margin-top:6px;color:#999;">' +
-            '\u5982\u679C\u60AC\u6D6E\u7403\u4E22\u5931\u6216\u5361\u5728\u5C4F\u5E55\u5916\uFF0C\u70B9\u6B64\u6309\u94AE\u53EF\u4EE5\u628A\u5B83\u627E\u56DE\u6765\u3002' +
-          '</small>' +
-        '</div>' +
-      '</div>';
-    container.appendChild(wrapper);
-
-    var toggle = document.getElementById('stg-drawer-toggle');
-    var content = document.getElementById('stg-drawer-content');
-    if (toggle && content) {
-      content.style.display = 'none';
-      toggle.addEventListener('click', function () {
-        var icon = toggle.querySelector('.inline-drawer-icon');
-        if (content.style.display === 'none') {
-          content.style.display = 'block';
-          if (icon) {
-            icon.classList.remove('down');
-            icon.classList.add('up');
-          }
-        } else {
-          content.style.display = 'none';
-          if (icon) {
-            icon.classList.remove('up');
-            icon.classList.add('down');
-          }
-        }
-      });
-    }
-
-    var resetBtn = document.getElementById('stg-reset-btn');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', function () {
-        resetFabPosition();
-      });
+    } catch (e) {
+      console.warn('[STG] settings load error', e);
     }
   }
 
@@ -227,7 +177,7 @@
       if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
         fabDragged = true;
         var nl = fabSL + dx;
-        var nt = fabST + dy;
+        varnt = fabST + dy;
         nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
         nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
@@ -333,17 +283,9 @@
   }
 
   function onTool(act) {
-    if (act === 'exit') {
-      exitDraw();return;
-    }
-    if (act === 'save') {
-      saveData();
-      return;
-    }
-    if (act === 'clear') {
-      clearAll();
-      return;
-    }
+    if (act === 'exit') { exitDraw(); return; }
+    if (act === 'save') { saveData(); return; }
+    if (act === 'clear') { clearAll(); return; }
     tool = act;
     hilite();
     updatePointer();
@@ -538,8 +480,7 @@
     var all = document.querySelectorAll('.stg-canvas');
     for (var i = 0; i < all.length; i++) {
       var ctx = all[i].getContext('2d');
-      ctx.clearRect(0, 0, all[i].width, all[i].height);
-      var mid = getMesId(all[i]);
+      ctx.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
       if (mid !== null && graffitiStore[mid]) {
         graffitiStore[mid].strokes = [];
       }
