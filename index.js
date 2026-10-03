@@ -88,7 +88,6 @@
     }, ms || 2500);
   }
 
-  /* ---- settings panel in extensions page ---- */
   function makeSettingsPanel() {
     if (document.getElementById('stg-settings-panel')) return;
 
@@ -107,37 +106,14 @@
 
     var wrapper = document.createElement('div');
     wrapper.id = 'stg-settings-panel';
+    wrapper.style.cssText = 'margin:5px 0;padding:12px;border:1px solid rgba(255,133,157,0.3);border-radius:10px;background:rgba(30,30,30,0.3);';
     wrapper.innerHTML =
-      '<div class="inline-drawer">' +
-        '<div class="inline-drawer-toggle inline-drawer-header">' +
-          '<b>ST Graffiti</b>' +
-          '<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>' +
-        '</div>' +
-        '<div class="inline-drawer-content" style="display:none;">' +
-          '<div style="padding:8px 0;">' +
-            '<button id="stg-reset-btn" class="menu_button" style="width:100%;">' +
-              'Reset FAB Position' +
-            '</button>' +'<small style="display:block;margin-top:4px;color:#999;">' +
-              'If the floating button is lost or stuck off screen, click this to bring it back.' +
-            '</small>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+        '<b style="color:#ff859d;">ST Graffiti</b>' +'</div>' +
+      '<button id="stg-reset-btn" class="menu_button" style="width:100%;">Reset FAB Position</button>' +
+      '<small style="display:block;margin-top:4px;color:#999;">If the floating button is lost, click to bring it back.</small>';
     container.appendChild(wrapper);
 
-    // drawer toggle
-    var header = wrapper.querySelector('.inline-drawer-toggle');
-    var content = wrapper.querySelector('.inline-drawer-content');
-    if (header && content) {
-      header.addEventListener('click', function () {
-        if (content.style.display === 'none') {
-          content.style.display = 'block';} else {
-          content.style.display = 'none';
-        }
-      });
-    }
-
-    // reset button
     var resetBtn = document.getElementById('stg-reset-btn');
     if (resetBtn) {
       resetBtn.addEventListener('click', function () {
@@ -146,7 +122,6 @@
     }
   }
 
-  /* ---- FAB position ---- */
   function getDefaultFabPos() {
     return {
       left: window.innerWidth - FAB_SIZE + FAB_HIDE,
@@ -181,8 +156,7 @@
     if (fab) {
       fab.style.transition = 'left 0.3s ease, top 0.3s ease';
       fab.style.left = pos.left + 'px';
-      fab.style.top = pos.top + 'px';
-      fab.style.display = 'flex';
+      fab.style.top = pos.top + 'px';fab.style.display = 'flex';
       setTimeout(function () {
         fab.style.transition = 'left 0.3s ease';}, 400);
     }
@@ -190,7 +164,6 @@
     toast('FAB position reset!');
   }
 
-  /* ---- FAB ---- */
   function makeFab() {
     if (document.getElementById('stg-fab')) return;
     var fab = document.createElement('div');
@@ -221,9 +194,8 @@
       if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
         fabDragged = true;
         var nl = fabSL + dx;
-        var nt = fabST + dy;
-        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
-        nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
+        varnt = fabST + dy;
+        nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
         fab.style.top = nt + 'px';}
     });
@@ -254,7 +226,6 @@
     });
   }
 
-  /* ---- toolbar ---- */
   function makeToolbar() {
     if (document.getElementById('stg-toolbar')) return;
     var bar = document.createElement('div');
@@ -302,7 +273,8 @@
     var fab = document.getElementById('stg-fab');
     if (fab) fab.style.display = 'none';
     var bar = document.getElementById('stg-toolbar');
-    if (bar) bar.classList.add('stg-show');hilite();
+    if (bar) bar.classList.add('stg-show');
+    hilite();
 
     var msgs = document.querySelectorAll('#chat .mes');
     for (var i = 0; i < msgs.length; i++) {
@@ -399,8 +371,7 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-out';ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
@@ -532,8 +503,7 @@
     var all = document.querySelectorAll('.stg-canvas');
     for (var i = 0; i < all.length; i++) {
       var ctx = all[i].getContext('2d');
-      ctx.clearRect(0, 0, all[i].width, all[i].height);
-      var mid = getMesId(all[i]);
+      ctx.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
       if (mid !== null && graffitiStore[mid]) {
         graffitiStore[mid].strokes = [];
       }
