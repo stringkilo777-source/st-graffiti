@@ -73,8 +73,7 @@ makeToast();
 makeFab();
 makeToolbar();
 makePalette();
-makeBrushPanel();
-makeSizePanel();
+makeBrushSettingsPanel();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -334,10 +333,10 @@ indicator.style.background = penColor;
 }
 }
 
-function makeBrushPanel() {
-if (document.getElementById('stg-brush-panel')) return;
+function makeBrushSettingsPanel() {
+if (document.getElementById('stg-brush-settings')) return;
 var panel = document.createElement('div');
-panel.id = 'stg-brush-panel';
+panel.id = 'stg-brush-settings';
 panel.style.position = 'fixed';
 panel.style.left = '60px';
 panel.style.top = '50%';
@@ -348,14 +347,23 @@ panel.style.border = '2px solid rgba(255,133,157,0.4)';
 panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
+panel.style.width = '220px';
 
 var title = document.createElement('div');
-title.textContent = '画笔类型';
+title.textContent = '画笔设置';
 title.style.fontSize = '11px';
 title.style.color = '#888';
-title.style.marginBottom = '8px';
+title.style.marginBottom = '10px';
 title.style.userSelect = 'none';
 panel.appendChild(title);
+
+var typeLabel = document.createElement('div');
+typeLabel.textContent = '类型';
+typeLabel.style.fontSize = '10px';
+typeLabel.style.color = '#888';
+typeLabel.style.marginBottom = '6px';
+typeLabel.style.userSelect = 'none';
+panel.appendChild(typeLabel);
 
 var brushes = [
 {id: 'normal', name: '画笔'},
@@ -368,8 +376,8 @@ var item = document.createElement('div');
 item.setAttribute('data-brush', brush.id);
 item.style.display = 'flex';
 item.style.alignItems = 'center';
-item.style.gap = '10px';
-item.style.padding = '8px';
+item.style.gap = '8px';
+item.style.padding = '6px 8px';
 item.style.borderRadius = '8px';
 item.style.cursor = 'pointer';
 item.style.marginBottom = '4px';
@@ -381,8 +389,8 @@ item.style.borderColor = '#ff859d';
 }
 
 var preview = document.createElement('div');
-preview.style.width = '28px';
-preview.style.height = '28px';
+preview.style.width = '20px';
+preview.style.height = '20px';
 preview.style.borderRadius = '50%';
 preview.style.flexShrink = '0';
 if (brush.id === 'normal') {
@@ -395,7 +403,7 @@ item.appendChild(preview);
 
 var name = document.createElement('div');
 name.textContent = brush.name;
-name.style.fontSize = '13px';
+name.style.fontSize = '12px';
 name.style.color = '#ccc';
 name.style.userSelect = 'none';
 item.appendChild(name);
@@ -403,72 +411,11 @@ item.appendChild(name);
 panel.appendChild(item);
 }
 
-document.body.appendChild(panel);
-
-panel.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-});
-
-panel.addEventListener('click', function (e) {
-e.preventDefault();
-e.stopPropagation();
-var item = e.target.closest('[data-brush]');
-if (!item) return;
-var bid = item.getAttribute('data-brush');
-brushType = bid;
-updateBrushHighlight();
-hideBrushPanel();
-showSizePanel();
-toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
-});
-}
-
-function updateBrushHighlight() {
-var items = document.querySelectorAll('[data-brush]');
-for (var i = 0; i < items.length; i++) {
-var bid = items[i].getAttribute('data-brush');
-if (bid === brushType) {
-items[i].style.borderColor = '#ff859d';
-} else {
-items[i].style.borderColor = 'transparent';
-}
-}
-}
-
-function hideBrushPanel() {
-var panel = document.getElementById('stg-brush-panel');
-if (panel) panel.style.display = 'none';
-}
-
-function makeSizePanel() {
-if (document.getElementById('stg-size-panel')) return;
-var panel = document.createElement('div');
-panel.id = 'stg-size-panel';
-panel.style.position = 'fixed';
-panel.style.left = '60px';
-panel.style.top = '50%';
-panel.style.transform = 'translateY(-50%)';
-panel.style.background = 'rgba(30,30,30,0.95)';
-panel.style.borderRadius = '16px';
-panel.style.border = '2px solid rgba(255,133,157,0.4)';
-panel.style.padding = '12px';
-panel.style.zIndex = '9999999';
-panel.style.display = 'none';
-panel.style.width = '200px';
-
-var title = document.createElement('div');
-title.textContent = '画笔设置';
-title.style.fontSize = '11px';
-title.style.color = '#888';
-title.style.marginBottom = '10px';
-title.style.userSelect = 'none';
-panel.appendChild(title);
+var sep = document.createElement('div');
+sep.style.height = '1px';
+sep.style.background = 'rgba(255,255,255,0.1)';
+sep.style.margin = '10px 0';
+panel.appendChild(sep);
 
 var sizeRow = makeBrushSlider('大小', 1, 50, penWidth, function (v) {
 if (tool === 'eraser') {
@@ -502,6 +449,44 @@ e.stopPropagation();
 panel.addEventListener('pointerup', function (e) {
 e.stopPropagation();
 });
+
+panel.addEventListener('click', function (e) {
+e.preventDefault();
+e.stopPropagation();
+var item = e.target.closest('[data-brush]');
+if (!item) return;
+var bid = item.getAttribute('data-brush');
+brushType = bid;
+updateBrushTypeHighlight();
+toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
+});
+}
+
+function updateBrushTypeHighlight() {
+var items = document.querySelectorAll('[data-brush]');
+for (var i = 0; i < items.length; i++) {
+var bid = items[i].getAttribute('data-brush');
+if (bid === brushType) {
+items[i].style.borderColor = '#ff859d';
+} else {
+items[i].style.borderColor = 'transparent';
+}
+}
+}
+
+function toggleBrushSettings() {
+var panel = document.getElementById('stg-brush-settings');
+if (!panel) return;
+if (panel.style.display === 'block') {
+panel.style.display = 'none';
+} else {
+panel.style.display = 'block';
+}
+}
+
+function hideBrushSettings() {
+var panel = document.getElementById('stg-brush-settings');
+if (panel) panel.style.display = 'none';
 }
 
 function makeBrushSlider(label, min, max, val, onChange) {
@@ -509,8 +494,8 @@ var row = document.createElement('div');
 row.style.marginBottom = '10px';
 
 var labelDiv = document.createElement('div');
-labelDiv.style.fontSize = '11px';
-labelDiv.style.color = '#aaa';
+labelDiv.style.fontSize = '10px';
+labelDiv.style.color = '#888';
 labelDiv.style.marginBottom = '4px';
 labelDiv.style.userSelect = 'none';
 labelDiv.textContent = label;
@@ -534,7 +519,7 @@ var valTxt = document.createElement('div');
 valTxt.textContent = Math.round(val);
 valTxt.style.fontSize = '11px';
 valTxt.style.color = '#ccc';
-valTxt.style.width = '28px';
+valTxt.style.width = '32px';
 valTxt.style.textAlign = 'right';
 valTxt.style.userSelect = 'none';
 sliderWrap.appendChild(valTxt);
@@ -557,19 +542,6 @@ e.stopPropagation();
 });
 
 return row;
-}
-
-function showSizePanel() {
-hideBrushPanel();
-var pp = document.getElementById('stg-palette');
-if (pp) pp.style.display = 'none';
-var sp = document.getElementById('stg-size-panel');
-if (sp) sp.style.display = 'block';
-}
-
-function hideSizePanel() {
-var panel = document.getElementById('stg-size-panel');
-if (panel) panel.style.display = 'none';
 }
 
 function makePalette() {
@@ -1032,8 +1004,7 @@ lastCanvas = null;
 currentStroke = null;
 var pp = document.getElementById('stg-palette');
 if (pp) pp.style.display = 'none';
-hideBrushPanel();
-hideSizePanel();
+hideBrushSettings();
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -1049,16 +1020,13 @@ if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
 if (act === 'color') {
-hideBrushPanel();
-hideSizePanel();
+hideBrushSettings();
 var pp = document.getElementById('stg-palette');
 if (pp) {
 if (pp.style.display === 'block') {
 pp.style.display = 'none';
-toast('调色板已关闭');
 } else {
 pp.style.display = 'block';
-toast('调色板已打开');
 }
 }
 return;
@@ -1069,23 +1037,13 @@ hilite();
 updatePointer();
 var pp2 = document.getElementById('stg-palette');
 if (pp2) pp2.style.display = 'none';
-var sp = document.getElementById('stg-size-panel');
-var bp = document.getElementById('stg-brush-panel');
-if (sp && sp.style.display === 'block') {
-sp.style.display = 'none';
-} else if (bp && bp.style.display === 'block') {
-bp.style.display = 'none';
-showSizePanel();
-} else {
-if (bp) bp.style.display = 'block';
-}
+toggleBrushSettings();
 return;
 }
 tool = act;
 hilite();
 updatePointer();
-hideBrushPanel();
-hideSizePanel();
+hideBrushSettings();
 var pp3 = document.getElementById('stg-palette');
 if (pp3) pp3.style.display = 'none';
 }
