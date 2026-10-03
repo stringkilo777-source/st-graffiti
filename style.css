@@ -19,8 +19,6 @@
 
 #stg-fab {
   position: fixed;
-  right: 16px;
-  bottom: 80px;
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -34,6 +32,8 @@
   -webkit-user-select: none;
   touch-action: none;
   box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  font-size: 20px;
+  color: #ff859d;
 }
 
 #stg-fab:active {
@@ -82,4 +82,33 @@
 .stg-btn.stg-on {
   background: rgba(255,133,157,0.2);
   color: #ff859d;
+}
+
+.stg-sep {
+  width: 26px;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+  margin: 2px auto;
+}
+
+#stg-toast {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: rgba(30,30,30,0.95);
+  color: #ff859d;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,133,157,0.3);
+  font-size: 13px;
+  z-index: 2000002;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;white-space: nowrap;
+}
+
+#stg-toast.stg-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
