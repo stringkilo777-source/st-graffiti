@@ -19,7 +19,10 @@ name: '画笔',
 icon: null,
 author: '涂鸦插件官方',
 defaultWidth: 3,
-defaultOpacity: 1.0
+defaultOpacity: 1.0,
+flow: 100,
+hardness: 100,
+spacing: 10
 },
 {
 id: 'highlighter',
@@ -27,7 +30,10 @@ name: '荧光笔',
 icon: null,
 author: '涂鸦插件官方',
 defaultWidth: 18,
-defaultOpacity: 0.3
+defaultOpacity: 0.3,
+flow: 100,
+hardness: 50,
+spacing: 5
 }
 ];
 
@@ -72,6 +78,9 @@ var brushType = 'normal';
 var penColor = '#ff0000';
 var penWidth = 3;
 var penOpacity = 1.0;
+var brushFlow = 100;
+var brushHardness = 100;
+var brushSpacing = 10;
 var highlighterWidth = 18;
 var highlighterOpacity = 0.3;
 var eraserWidth = 16;
@@ -86,6 +95,7 @@ var fabSX = 0;
 var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
+var brushSettingsTab = 'brushes';
 
 function startPlugin() {
 loadData();
@@ -388,20 +398,67 @@ panel.style.transform = 'translateY(-50%)';
 panel.style.background = 'rgba(30,30,30,0.95)';
 panel.style.borderRadius = '16px';
 panel.style.border = '2px solid rgba(255,133,157,0.4)';
-panel.style.padding = '12px';
+panel.style.padding = '0';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
-panel.style.width = '240px';
+panel.style.width = '260px';
 panel.style.maxHeight = '80vh';
 panel.style.overflowY = 'auto';
 
-var title = document.createElement('div');
-title.textContent = '画笔设置';
-title.style.fontSize = '11px';
-title.style.color = '#888';
-title.style.marginBottom = '10px';
-title.style.userSelect = 'none';
-panel.appendChild(title);
+var tabBar = document.createElement('div');
+tabBar.style.display = 'flex';
+tabBar.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+tabBar.style.background = 'rgba(0,0,0,0.2)';
+tabBar.style.borderRadius = '16px 16px 0 0';
+
+var tabs = [
+{id: 'brushes', label: '画笔'},
+{id: 'settings', label: '设置'}
+];
+
+for (var i = 0; i < tabs.length; i++) {
+var tab = tabs[i];
+var tabBtn = document.createElement('div');
+tabBtn.setAttribute('data-tab', tab.id);
+tabBtn.textContent = tab.label;
+tabBtn.style.flex = '1';
+tabBtn.style.padding = '10px';
+tabBtn.style.textAlign = 'center';
+tabBtn.style.fontSize = '12px';
+tabBtn.style.color = '#888';
+tabBtn.style.cursor = 'pointer';
+tabBtn.style.userSelect = 'none';
+tabBtn.style.transition = 'color 0.2s ease, background 0.2s ease';
+tabBtn.style.borderBottom = '2px solid transparent';
+if (tab.id === brushSettingsTab) {
+tabBtn.style.color = '#ff859d';
+tabBtn.style.borderBottomColor = '#ff859d';
+}
+tabBar.appendChild(tabBtn);
+}
+
+panel.appendChild(tabBar);
+
+tabBar.addEventListener('click', function (e) {
+var tabBtn = e.target.closest('[data-tab]');
+if (!tabBtn) return;
+var newTab = tabBtn.getAttribute('data-tab');
+brushSettingsTab = newTab;
+var allTabs = tabBar.querySelectorAll('[data-tab]');
+for (var j = 0; j < allTabs.length; j++) {
+if (allTabs[j].getAttribute('data-tab') === newTab) {
+allTabs[j].style.color = '#ff859d';
+allTabs[j].style.borderBottomColor = '#ff859d';
+} else {
+allTabs[j].style.color = '#888';
+allTabs[j].style.borderBottomColor = 'transparent';
+}
+}
+updateBrushTabContent();
+});
+
+var content = document.createElement('div');
+content.style.padding = '12px';
 
 var sizeRow = makeBrushSlider('大小', 1, 50, getCurrentBrushWidth(), function (v) {
 if (tool === 'eraser') {
@@ -412,39 +469,31 @@ highlighterWidth = v;
 penWidth = v;
 }
 });
-panel.appendChild(sizeRow);
+content.appendChild(sizeRow);
 
 var opacityRow = makeBrushSlider('不透明度', 0, 100, getCurrentBrushOpacity() * 100, function (v) {
 if (tool === 'eraser') return;
 if (brushType === 'highlighter') {
-highlighterOpacity = v / 100;
 } else {
 penOpacity = v / 100;
 }
 });
-panel.appendChild(opacityRow);
+content.appendChild(opacityRow);
 
 var sep = document.createElement('div');
 sep.style.height = '1px';
 sep.style.background = 'rgba(255,255,255,0.1)';
 sep.style.margin = '12px 0';
-panel.appendChild(sep);
+content.appendChild(sep);
 
-var brushListLabel = document.createElement('div');
-brushListLabel.textContent = '画笔列表';
-brushListLabel.style.fontSize = '10px';
-brushListLabel.style.color = '#888';
-brushListLabel.style.marginBottom = '8px';
-brushListLabel.style.userSelect = 'none';
-panel.appendChild(brushListLabel);
+var tabContent = document.createElement('div');
+tabContent.id = 'stg-tab-content';
+content.appendChild(tabContent);
 
-var brushList = document.createElement('div');
-brushList.id = 'stg-brush-list';
-panel.appendChild(brushList);
-
+panel.appendChild(content);
 document.body.appendChild(panel);
 
-updateBrushList();
+updateBrushTabContent();
 
 panel.addEventListener('pointerdown', function (e) {
 e.stopPropagation();
@@ -464,6 +513,93 @@ if (!item) return;
 var bid = item.getAttribute('data-brush');
 switchToBrush(bid);
 });
+}
+
+function updateBrushTabContent() {
+var tabContent = document.getElementById('stg-tab-content');
+if (!tabContent) return;
+tabContent.innerHTML = '';
+
+if (brushSettingsTab === 'brushes') {
+var grid = document.createElement('div');
+grid.style.display = 'grid';
+grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+grid.style.gap = '8px';
+
+for (var i = 0; i < brushPresets.length; i++) {
+var brush = brushPresets[i];
+var item = document.createElement('div');
+item.setAttribute('data-brush', brush.id);
+item.style.display = 'flex';
+item.style.flexDirection = 'column';
+item.style.alignItems = 'center';
+item.style.padding = '8px';
+item.style.borderRadius = '8px';
+item.style.cursor = 'pointer';
+item.style.border = '2px solid transparent';
+item.style.transition = 'border-color 0.15s ease, background 0.15s ease';
+
+if (brush.id === brushType) {
+item.style.borderColor = '#ff859d';
+item.style.background = 'rgba(255,133,157,0.1)';
+}
+
+var icon = document.createElement('img');
+icon.src = brush.icon || DEFAULT_BRUSH_ICON;
+icon.style.width = '48px';
+icon.style.height = '48px';
+icon.style.borderRadius = '8px';
+icon.style.objectFit = 'cover';
+icon.style.background = 'rgba(255,255,255,0.05)';
+icon.style.marginBottom = '6px';
+item.appendChild(icon);
+
+var name = document.createElement('div');
+name.textContent = brush.name;
+name.style.fontSize = '11px';
+name.style.color = '#ccc';
+name.style.userSelect = 'none';
+name.style.textAlign = 'center';
+item.appendChild(name);
+
+grid.appendChild(item);
+}
+tabContent.appendChild(grid);
+} else if (brushSettingsTab === 'settings') {
+var preset = brushPresets.find(function(b) { return b.id === brushType; });
+if (!preset) return;
+
+var infoLabel = document.createElement('div');
+infoLabel.textContent = '\u5F53\u524D\u753B\u7B14: ' + preset.name;
+infoLabel.style.fontSize = '11px';
+infoLabel.style.color = '#888';
+infoLabel.style.marginBottom = '10px';
+infoLabel.style.userSelect = 'none';
+tabContent.appendChild(infoLabel);
+
+var flowRow = makeDetailSlider('流量', 0, 100, brushFlow, function(v) {
+brushFlow = v;
+});
+tabContent.appendChild(flowRow);
+
+var hardnessRow = makeDetailSlider('硬度', 0, 100, brushHardness, function(v) {
+brushHardness = v;
+});
+tabContent.appendChild(hardnessRow);
+
+var spacingRow = makeDetailSlider('间距', 1, 100, brushSpacing, function(v) {
+brushSpacing = v;
+});
+tabContent.appendChild(spacingRow);
+
+var authorLabel = document.createElement('div');
+authorLabel.textContent = '\u6765\u6E90: ' + preset.author;
+authorLabel.style.fontSize = '10px';
+authorLabel.style.color = '#666';
+authorLabel.style.marginTop = '12px';
+authorLabel.style.userSelect = 'none';
+tabContent.appendChild(authorLabel);
+}
 }
 
 function getCurrentBrushWidth() {
@@ -492,9 +628,13 @@ penWidth = preset.defaultWidth;
 penOpacity = preset.defaultOpacity;
 }
 
-updateBrushList();
+brushFlow = preset.flow;
+brushHardness = preset.hardness;
+brushSpacing = preset.spacing;
+
+updateBrushTabContent();
 updateBrushSliders();
-toast('\u5DF2\u5207\u6362\u5230: ' + preset.name + ' (\u6765\u6E90: ' + preset.author + ')');
+toast('\u5DF2\u5207\u6362\u5230: ' + preset.name);
 }
 
 function updateBrushSliders() {
@@ -516,71 +656,6 @@ if (opVal) opVal.textContent = Math.round(o);
 }
 }
 
-function updateBrushList() {
-var list = document.getElementById('stg-brush-list');
-if (!list) return;
-list.innerHTML = '';
-
-for (var i = 0; i < brushPresets.length; i++) {
-var brush = brushPresets[i];
-var item = document.createElement('div');
-item.setAttribute('data-brush', brush.id);
-item.style.display = 'flex';
-item.style.alignItems = 'center';
-item.style.gap = '10px';
-item.style.padding = '8px';
-item.style.borderRadius = '8px';
-item.style.cursor = 'pointer';
-item.style.marginBottom = '6px';
-item.style.border = '2px solid transparent';
-item.style.transition = 'border-color 0.15s ease, background 0.15s ease';
-
-if (brush.id === brushType) {
-item.style.borderColor = '#ff859d';
-item.style.background = 'rgba(255,133,157,0.1)';
-}
-
-var icon = document.createElement('img');
-icon.src = brush.icon || DEFAULT_BRUSH_ICON;
-icon.style.width = '32px';
-icon.style.height = '32px';
-icon.style.borderRadius = '6px';
-icon.style.objectFit = 'cover';
-icon.style.background = 'rgba(255,255,255,0.05)';
-icon.style.flexShrink = '0';
-item.appendChild(icon);
-
-var info = document.createElement('div');
-info.style.flex = '1';
-info.style.minWidth = '0';
-
-var name = document.createElement('div');
-name.textContent = brush.name;
-name.style.fontSize = '13px';
-name.style.color = '#fff';
-name.style.fontWeight = '500';
-name.style.userSelect = 'none';
-name.style.overflow = 'hidden';
-name.style.textOverflow = 'ellipsis';
-name.style.whiteSpace = 'nowrap';
-info.appendChild(name);
-
-var author = document.createElement('div');
-author.textContent = '\u6765\u6E90: ' + brush.author;
-author.style.fontSize = '10px';
-author.style.color = '#888';
-author.style.marginTop = '2px';
-author.style.userSelect = 'none';
-author.style.overflow = 'hidden';
-author.style.textOverflow = 'ellipsis';
-author.style.whiteSpace = 'nowrap';
-info.appendChild(author);
-
-item.appendChild(info);
-list.appendChild(item);
-}
-}
-
 function toggleBrushSettings() {
 var panel = document.getElementById('stg-brush-settings');
 if (!panel) return;
@@ -589,6 +664,7 @@ panel.style.display = 'none';
 } else {
 panel.style.display = 'block';
 updateBrushSliders();
+updateBrushTabContent();
 }
 }
 
@@ -636,6 +712,61 @@ valTxt.style.userSelect = 'none';
 valWrap.appendChild(valTxt);
 
 sliderWrap.appendChild(valWrap);
+row.appendChild(sliderWrap);
+
+slider.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+
+slider.addEventListener('input', function (e) {
+e.stopPropagation();
+var v = parseFloat(slider.value);
+valTxt.textContent = Math.round(v);
+onChange(v);
+});
+
+slider.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+
+return row;
+}
+
+function makeDetailSlider(label, min, max, val, onChange) {
+var row = document.createElement('div');
+row.style.marginBottom = '10px';
+
+var labelDiv = document.createElement('div');
+labelDiv.style.fontSize = '10px';
+labelDiv.style.color = '#888';
+labelDiv.style.marginBottom = '4px';
+labelDiv.style.userSelect = 'none';
+labelDiv.textContent = label;
+row.appendChild(labelDiv);
+
+var sliderWrap = document.createElement('div');
+sliderWrap.style.display = 'flex';
+sliderWrap.style.alignItems = 'center';
+sliderWrap.style.gap = '8px';
+
+var slider = document.createElement('input');
+slider.type = 'range';
+slider.min = min;
+slider.max = max;
+slider.value = val;
+slider.style.flex = '1';
+slider.style.cursor = 'pointer';
+sliderWrap.appendChild(slider);
+
+var valTxt = document.createElement('div');
+valTxt.textContent = Math.round(val);
+valTxt.style.fontSize = '11px';
+valTxt.style.color = '#ccc';
+valTxt.style.width = '32px';
+valTxt.style.textAlign = 'right';
+valTxt.style.userSelect = 'none';
+sliderWrap.appendChild(valTxt);
+
 row.appendChild(sliderWrap);
 
 slider.addEventListener('pointerdown', function (e) {
