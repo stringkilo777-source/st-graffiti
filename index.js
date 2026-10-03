@@ -7,7 +7,6 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
-var paletteHue = 0;
 
 function getCtx() {
 try {
@@ -58,12 +57,19 @@ var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
 
+var STG_COLORS = [
+'#ff0000','#ff6600','#ffcc00','#33cc00',
+'#00cccc','#0066ff','#6633ff','#cc00cc',
+'#ff3366','#996633','#ffffff','#000000',
+'#ff9999','#ffcc99','#99ff99','#99ccff'
+];
+
 function startPlugin() {
 loadData();
 makeToast();
 makeFab();
 makeToolbar();
-try { makePalette(); } catch(e) { console.warn('[STG] palette error', e); }
+makePalette();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -126,9 +132,9 @@ return p;
 return getDefaultFabPos();
 }
 
-function saveFabPos(l, tVal) {
+function saveFabPos(l, topVal) {
 try {
-localStorage.setItem('stg_fab_pos', JSON.stringify({left: l, top: tVal}));
+localStorage.setItem('stg_fab_pos', JSON.stringify({left: l, top: topVal}));
 } catch (e) {}
 }
 
@@ -255,171 +261,36 @@ function makePalette() {
 if (document.getElementById('stg-palette')) return;
 var panel = document.createElement('div');
 panel.id = 'stg-palette';
-var wrap = document.createElement('div');
-wrap.className = 'stg-ring-wrap';
-var ringCv = document.createElement('canvas');
-ringCv.className = 'stg-ring-canvas';
-ringCv.width = 200;
-ringCv.height = 200;
-wrap.appendChild(ringCv);
-var sqCv = document.createElement('canvas');
-sqCv.className = 'stg-sq-canvas';
-sqCv.width = 120;
-sqCv.height = 120;
-wrap.appendChild(sqCv);
-panel.appendChild(wrap);
-var prevRow = document.createElement('div');
-prevRow.className = 'stg-preview-row';
-var prevBox = document.createElement('div');
-prevBox.className = 'stg-preview-box';
-prevBox.id = 'stg-preview-box';
-prevBox.style.background = penColor;
-prevRow.appendChild(prevBox);
-var prevHex = document.createElement('span');
-prevHex.className = 'stg-preview-hex';
-prevHex.id = 'stg-preview-hex';
-prevHex.textContent = penColor;
-prevRow.appendChild(prevHex);
-panel.appendChild(prevRow);
+var grid = document.createElement('div');
+grid.className = 'stg-color-grid';
+for (var i = 0; i < STG_COLORS.length; i++) {
+var cell = document.createElement('div');
+cell.className = 'stg-color-cell';
+cell.setAttribute('data-stg-color', STG_COLORS[i]);
+cell.style.background = STG_COLORS[i];
+if (STG_COLORS[i] === penColor) cell.classList.add('stg-picked');
+grid.appendChild(cell);
+}
+panel.appendChild(grid);
 document.body.appendChild(panel);
-drawRing(ringCv);
-drawSquare(sqCv, paletteHue);
-var ringDown = false;
-var sqDown = false;
-ringCv.addEventListener('pointerdown', function (e) {
+grid.addEventListener('click', function (e) {
+var cell = e.target.closest('.stg-color-cell');
+if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
-ringDown = true;
-doPickRing(ringCv, sqCv, e);
-});
-ringCv.addEventListener('pointermove', function (e) {
-if (!ringDown) return;
-e.preventDefault();
-e.stopPropagation();
-doPickRing(ringCv, sqCv, e);
-});
-ringCv.addEventListener('pointerup', function () { ringDown = false; });
-ringCv.addEventListener('pointercancel', function () { ringDown = false; });
-sqCv.addEventListener('pointerdown', function (e) {
-e.preventDefault();
-e.stopPropagation();
-sqDown = true;
-doPickSquare(sqCv, e);
-});
-sqCv.addEventListener('pointermove', function (e) {
-if (!sqDown) return;
-e.preventDefault();
-e.stopPropagation();
-doPickSquare(sqCv, e);
-});
-sqCv.addEventListener('pointerup', function () { sqDown = false; });
-sqCv.addEventListener('pointercancel', function () { sqDown = false; });
+penColor = cell.getAttribute('data-stg-color');
+var allCells = grid.querySelectorAll('.stg-color-cell');
+for (var j = 0; j < allCells.length; j++) {
+allCells[j].classList.remove('stg-picked');
 }
-
-function drawRing(cv) {
-var rc = cv.getContext('2d');
-rc.clearRect(0, 0, 200, 200);
-for (var a = 0; a < 360; a++) {
-var r1 = (a - 0.5) * Math.PI / 180;
-var r2 = (a + 1.5) * Math.PI / 180;
-rc.beginPath();
-rc.arc(100, 100, 98, r1, r2);
-rc.arc(100, 100, 72, r2, r1, true);
-rc.closePath();
-rc.fillStyle = 'hsl(' + a + ',100%,50%)';
-rc.fill();
-}
-}
-
-function drawSquare(cv, hue) {
-var sc = cv.getContext('2d');
-var w = cv.width;
-var h = cv.height;
-sc.clearRect(0, 0, w, h);
-for (var x = 0; x < w; x++) {
-var sa = x / w;
-for (var y = 0; y < h; y++) {
-var va = 1 - y / h;
-var rgb = stgHsvToRgb(hue, sa, va);
-sc.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-sc.fillRect(x, y, 1, 1);
-}
-}
-}
-
-function doPickRing(ringCv, sqCv, e) {
-var rect = ringCv.getBoundingClientRect();
-var x = e.clientX - rect.left - 100;
-var y = e.clientY - rect.top - 100;
-var dist = Math.sqrt(x * x + y * y);
-if (dist < 60|| dist > 100) return;
-var angle = Math.atan2(y, x) * 180 / Math.PI;
-if (angle < 0) angle += 360;
-paletteHue = angle;
-drawSquare(sqCv, paletteHue);
-var rgb = stgHsvToRgb(paletteHue, 1, 1);
-penColor = '#' + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
-updatePreview();
-}
-
-function doPickSquare(sqCv, e) {
-var rect = sqCv.getBoundingClientRect();
-var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-var sa = x / rect.width;
-var va = 1 - y / rect.height;
-var rgb = stgHsvToRgb(paletteHue, sa, va);
-penColor = '#' + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
-updatePreview();
-}
-
-function stgHsvToRgb(h, s, v) {
-h = h / 360;
-var i = Math.floor(h * 6);
-var f = h * 6 - i;
-var p = v * (1 - s);
-var q = v * (1 - f * s);
-var u = v * (1 - (1 - f) * s);
-var r =0;
-var g = 0;
-var b = 0;
-switch (i % 6) {
-case 0: r = v; g = u; b = p; break;
-case 1: r = q; g = v; b = p; break;
-case 2: r = p; g = v; b = u; break;
-case 3: r = p; g = q; b = v; break;
-case 4: r = u; g = p; b = v; break;
-case 5: r = v; g = p; b = q; break;
-}
-return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-}
-
-function updatePreview() {
-var prevBox = document.getElementById('stg-preview-box');
-if (prevBox) prevBox.style.background = penColor;
-var prevHex = document.getElementById('stg-preview-hex');
-if (prevHex) prevHex.textContent = penColor;
+cell.classList.add('stg-picked');
 var fab = document.getElementById('stg-fab');
 if (fab) {
 fab.style.borderColor = penColor;
 fab.style.color = penColor;
 }
-}
-
-function togglePalette() {
-var panel = document.getElementById('stg-palette');
-if (!panel) return;
-if (panel.style.display === 'block') {
-panel.style.display = 'none';
-} else {
-panel.style.display = 'block';
-}
-}
-
-function hidePalette() {
-var panel = document.getElementById('stg-palette');
-if (panel) panel.style.display = 'none';
-}
+});
+  }
 
 function enterDraw() {
 drawing = true;
@@ -440,7 +311,8 @@ drawing = false;
 pressing = false;
 lastCanvas = null;
 currentStroke = null;
-hidePalette();
+var pp = document.getElementById('stg-palette');
+if (pp) pp.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -453,10 +325,21 @@ all[i].classList.remove('stg-active');
 
 function onTool(act) {
 if (act === 'exit') { exitDraw(); return; }
-if (act === 'save') { hidePalette(); saveData(); return; }
-if (act === 'clear') { hidePalette(); clearAll(); return; }
-if (act === 'color') { togglePalette(); return; }
-hidePalette();
+if (act === 'save') { saveData(); return; }
+if (act === 'clear') { clearAll(); return; }
+if (act === 'color') {
+var pp = document.getElementById('stg-palette');
+if (pp) {
+if (pp.style.display === 'block') {
+pp.style.display = 'none';
+} else {
+pp.style.display = 'block';
+}
+}
+return;
+}
+var pp2 = document.getElementById('stg-palette');
+if (pp2) pp2.style.display = 'none';
 tool = act;
 hilite();
 updatePointer();
@@ -667,7 +550,7 @@ delete graffitiStore[keys[i]];
 }
 var count = Object.keys(graffitiStore).length;
 if (count > MAX_GRAFFITI) {
-toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI + ') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
+toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI +') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
 return;
 }
 try {
