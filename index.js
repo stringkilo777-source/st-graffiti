@@ -46,7 +46,7 @@ _c.eventSource.on(_c.event_types.APP_READY, fire);
 } catch (e) {}
 
 var drawing = false;
-var tool = 'pen';
+var tool = 'brush';
 var brushType = 'normal';
 var penColor = '#ff0000';
 var penWidth = 3;
@@ -409,8 +409,10 @@ var item = e.target.closest('[data-brush]');
 if (!item) return;
 var bid = item.getAttribute('data-brush');
 brushType = bid;
+tool = 'brush';
 updateBrushHighlight();
 hideBrushPanel();
+hilite();
 toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
 });
 }
@@ -873,7 +875,9 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 
 function enterDraw() {
 drawing = true;
+if (tool !== 'mouse' && tool !== 'eraser' && tool !== 'brush') {
 tool = 'brush';
+}
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
@@ -944,7 +948,7 @@ function hilite() {
 var btns = document.querySelectorAll('.stg-btn');
 for (var i = 0; i < btns.length; i++) {
 var id = btns[i].getAttribute('data-stg');
-if (id === tool || (id === 'brush' && tool === 'brush')) {
+if (id === tool) {
 btns[i].classList.add('stg-on');
 } else {
 btns[i].classList.remove('stg-on');
@@ -1147,7 +1151,7 @@ if (mid !== null && graffitiStore[mid]) {
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
 }
 
 function saveData() {
