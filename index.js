@@ -19,11 +19,8 @@
   function fire() {
     if (initDone) return;
     initDone = true;
-    try {
-      startPlugin();
-    } catch (err) {
-      console.warn('[STG] init error', err);
-    }
+    try { startPlugin(); }
+    catch (err) { console.warn('[STG] init error', err); }
   }
 
   var t0 = Date.now();
@@ -138,8 +135,7 @@
     if (fab) {
       fab.style.transition = 'left 0.3s ease, top 0.3s ease';
       fab.style.left = pos.left + 'px';
-      fab.style.top = pos.top + 'px';
-      fab.style.display = 'flex';
+      fab.style.top = pos.top + 'px';fab.style.display = 'flex';
       setTimeout(function () {
         fab.style.transition = 'left 0.3s ease';}, 400);
     }
@@ -177,11 +173,12 @@
       if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
         fabDragged = true;
         var nl = fabSL + dx;
-        varnt = fabST + dy;
+        var nt = fabST + dy;
         nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
         nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
-        fab.style.top = nt + 'px';}
+        fab.style.top = nt + 'px';
+      }
     });
 
     fab.addEventListener('pointerup', function () {
@@ -347,8 +344,7 @@
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'destination-out';ctx.globalAlpha = 1;
       ctx.strokeStyle = 'rgba(0,0,0,1)';
       ctx.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
@@ -474,7 +470,8 @@
     }
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;}
+    ctx.globalAlpha = 1;
+  }
 
   function clearAll() {
     var all = document.querySelectorAll('.stg-canvas');
