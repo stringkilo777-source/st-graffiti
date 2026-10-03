@@ -261,18 +261,44 @@ function makePalette() {
 if (document.getElementById('stg-palette')) return;
 var panel = document.createElement('div');
 panel.id = 'stg-palette';
+panel.style.display = 'none';
+panel.style.position = 'fixed';
+panel.style.left = '52px';
+panel.style.top = '50%';
+panel.style.transform = 'translateY(-50%)';
+panel.style.background = 'rgba(30,30,30,0.95)';
+panel.style.borderRadius = '16px';
+panel.style.border = '1px solid rgba(255,133,157,0.25)';
+panel.style.padding = '10px';
+panel.style.zIndex = '2000001';
+panel.style.boxShadow = '4px 0 20px rgba(0,0,0,0.5)';
+
 var grid = document.createElement('div');
 grid.className = 'stg-color-grid';
+grid.style.display = 'grid';
+grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+grid.style.gap = '6px';
+
 for (var i = 0; i < STG_COLORS.length; i++) {
 var cell = document.createElement('div');
 cell.className = 'stg-color-cell';
 cell.setAttribute('data-stg-color', STG_COLORS[i]);
+cell.style.width = '30px';
+cell.style.height = '30px';
+cell.style.borderRadius = '50%';
 cell.style.background = STG_COLORS[i];
-if (STG_COLORS[i] === penColor) cell.classList.add('stg-picked');
+cell.style.border = '2px solid transparent';
+cell.style.boxSizing = 'border-box';
+cell.style.cursor = 'pointer';
+if (STG_COLORS[i] === penColor) {
+cell.style.borderColor = '#fff';
+cell.style.transform = 'scale(1.15)';
+}
 grid.appendChild(cell);
 }
 panel.appendChild(grid);
 document.body.appendChild(panel);
+
 grid.addEventListener('click', function (e) {
 var cell = e.target.closest('.stg-color-cell');
 if (!cell) return;
@@ -281,16 +307,16 @@ e.stopPropagation();
 penColor = cell.getAttribute('data-stg-color');
 var allCells = grid.querySelectorAll('.stg-color-cell');
 for (var j = 0; j < allCells.length; j++) {
-allCells[j].classList.remove('stg-picked');
+allCells[j].style.borderColor = 'transparent';
+allCells[j].style.transform = 'scale(1)';
 }
-cell.classList.add('stg-picked');
-var fab = document.getElementById('stg-fab');
-if (fab) {
-fab.style.borderColor = penColor;
-fab.style.color = penColor;
-}
+cell.style.borderColor = '#fff';
+cell.style.transform = 'scale(1.15)';
+console.log('[STG] 选择颜色:', penColor);
 });
-  }
+
+console.log('[STG] 调色板已创建');
+}
 
 function enterDraw() {
 drawing = true;
