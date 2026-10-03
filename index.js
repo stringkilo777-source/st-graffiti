@@ -3,6 +3,7 @@
 
 var PLUGIN_ID = 'st-graffiti';
 var MAX_GRAFFITI = 10;
+var MAX_HISTORY = 20;
 var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
@@ -90,12 +91,15 @@ var currentStroke = null;
 var lastX = 0;
 var lastY = 0;
 var graffitiStore = {};
+var historyStacks = {};
+var redoStacks = {};
 var fabDragged = false;
 var fabSX = 0;
 var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
 var brushSettingsTab = 'brushes';
+var shapeMode = null;
 
 function startPlugin() {
 loadData();
@@ -104,6 +108,8 @@ loadBrushIcons();
 makeToast();
 makeFab();
 makeToolbar();
+makeUtilityMenu();
+makeShapeToolbar();
 makePalette();
 makeBrushSettingsPanel();
 loadSettingsHtml();
@@ -337,6 +343,10 @@ var items = [
 {id: 'brush', label: '\uD83D\uDD8C'},
 {id: 'eraser', label: '\u2B55'},
 {id: 'sep2', sep: true},
+{id: 'undo', label: '\u↶'},
+{id: 'redo', label: '\u↷'},
+{id: 'sep3', sep: true},
+{id: 'utility', label: '\uD83D\uDD27'},
 {id: 'color', isColor: true},
 {id: 'clear', label: '\uD83D\uDDD1'},
 {id: 'save', label: '\uD83D\uDCBE'},
@@ -378,6 +388,151 @@ var tgt = e.target.closest('[data-stg]');
 if (!tgt) return;
 onTool(tgt.getAttribute('data-stg'));
 });
+}
+
+function makeUtilityMenu() {
+if (document.getElementById('stg-utility-menu')) return;
+var menu = document.createElement('div');
+menu.id = 'stg-utility-menu';
+menu.style.position = 'fixed';
+menu.style.left = '60px';
+menu.style.top = '50%';
+menu.style.transform = 'translateY(-50%)';
+menu.style.background = 'rgba(30,30,30,0.95)';
+menu.style.borderRadius = '12px';
+menu.style.border = '2px solid rgba(255,133,157,0.4)';
+menu.style.padding = '8px';
+menu.style.zIndex = '9999999';
+menu.style.display = 'none';
+menu.style.flexDirection = 'column';
+menu.style.gap = '4px';
+
+var items = [
+{id: 'eyedropper', label: '💧', title: '取色器'},
+{id: 'shapes', label: '▢', title: '形状'}
+];
+
+for (var i = 0; i < items.length; i++) {
+var item = items[i];
+var btn = document.createElement('button');
+btn.className = 'stg-util-btn';
+btn.setAttribute('data-util', item.id);
+btn.textContent = item.label;
+btn.title = item.title;
+btn.style.width = '36px';
+btn.style.height = '36px';
+btn.style.borderRadius = '8px';
+btn.style.border = 'none';
+btn.style.background = 'transparent';
+btn.style.color = '#ccc';
+btn.style.fontSize = '16px';
+btn.style.cursor = 'pointer';
+btn.style.transition = 'background 0.15s ease';
+menu.appendChild(btn);
+}
+
+document.body.appendChild(menu);
+
+menu.addEventListener('click', function(e) {
+var btn = e.target.closest('[data-util]');
+if (!btn) return;
+var utilId = btn.getAttribute('data-util');
+if (utilId === 'eyedropper') {
+activateEyedropper();
+} else if (utilId === 'shapes') {
+toggleShapeToolbar();
+}
+menu.style.display = 'none';
+});
+}
+
+function makeShapeToolbar() {
+if (document.getElementById('stg-shape-toolbar')) return;
+var bar = document.createElement('div');
+bar.id = 'stg-shape-toolbar';
+bar.style.position = 'fixed';
+bar.style.left = '50%';
+bar.style.transform = 'translateX(-50%) translateY(100%)';
+bar.style.bottom = '80px';
+bar.style.display = 'flex';
+bar.style.gap = '6px';
+bar.style.padding = '8px 12px';
+bar.style.background = 'rgba(30,30,30,0.95)';
+bar.style.borderRadius = '16px';
+bar.style.border = '2px solid rgba(255,133,157,0.4)';
+bar.style.zIndex = '9999999';
+bar.style.transition = 'transform 0.3s ease';
+
+var shapes = [
+{id: 'line', label: '—'},
+{id: 'wave', label: '~'},
+{id: 'rect', label: '▢'},
+{id: 'ellipse', label: '○'},
+{id: 'curve', label: '⌢'}
+];
+
+for (var i = 0; i < shapes.length; i++) {
+var shape = shapes[i];
+var btn = document.createElement('button');
+btn.className = 'stg-shape-btn';
+btn.setAttribute('data-shape', shape.id);
+btn.textContent = shape.label;
+btn.style.width = '40px';
+btn.style.height = '40px';
+btn.style.borderRadius = '10px';
+btn.style.border = 'none';
+btn.style.background = 'transparent';
+btn.style.color = '#ccc';
+btn.style.fontSize = '18px';
+btn.style.cursor = 'pointer';
+btn.style.transition = 'background 0.15s ease, color 0.15s ease';
+bar.appendChild(btn);
+}
+
+document.body.appendChild(bar);
+
+bar.addEventListener('click', function(e) {
+var btn = e.target.closest('[data-shape]');
+if (!btn) return;
+var sid = btn.getAttribute('data-shape');
+shapeMode = sid;
+var allBtns = bar.querySelectorAll('.stg-shape-btn');
+for (var j = 0; j < allBtns.length; j++) {
+allBtns[j].style.background = 'transparent';
+allBtns[j].style.color = '#ccc';
+}
+btn.style.background = 'rgba(255,133,157,0.2)';
+btn.style.color = '#ff859d';
+toast('已选择形状: ' + getShapeName(sid));
+});
+}
+
+function getShapeName(id) {
+var names = {
+line: '直线',
+wave: '波浪线',
+rect: '矩形',
+ellipse: '椭圆',
+curve: '曲线'
+};
+return names[id] || id;
+}
+
+function toggleShapeToolbar() {
+var bar = document.getElementById('stg-shape-toolbar');
+if (!bar) return;
+if (bar.style.transform.indexOf('translateY(0)') > -1) {
+bar.style.transform = 'translateX(-50%) translateY(100%)';
+} else {
+bar.style.transform = 'translateX(-50%) translateY(0)';
+}
+}
+
+function activateEyedropper() {
+tool = 'eyedropper';
+hilite();
+updatePointer();
+toast('取色器已激活,点击画布取色');
 }
 
 function updateColorIndicator() {
@@ -474,6 +629,7 @@ content.appendChild(sizeRow);
 var opacityRow = makeBrushSlider('不透明度', 0, 100, getCurrentBrushOpacity() * 100, function (v) {
 if (tool === 'eraser') return;
 if (brushType === 'highlighter') {
+highlighterOpacity = v / 100;
 } else {
 penOpacity = v / 100;
 }
@@ -1097,13 +1253,19 @@ return row;
 function previewColor(color) {
 penColor = color;
 updateColorIndicator();
+syncPaletteFromColor(color);
 }
 
 function applyColor(color) {
 penColor = color;
 addRecentColor(color);
 updateColorIndicator();
+syncPaletteFromColor(color);
 toast('已选择: ' + color);
+}
+
+function syncPaletteFromColor(hex) {
+// 暂时简化,后续可以反向计算HSV
 }
 
 function previewColorFromHSV() {
@@ -1226,6 +1388,15 @@ function rgbToHex(r, g, b) {
 return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
+function hexToRgb(hex) {
+var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+return result ? {
+r: parseInt(result[1], 16),
+g: parseInt(result[2], 16),
+b: parseInt(result[3], 16)
+} : null;
+}
+
 function enterDraw() {
 drawing = true;
 tool = 'brush';
@@ -1248,6 +1419,10 @@ currentStroke = null;
 var pp = document.getElementById('stg-palette');
 if (pp) pp.style.display = 'none';
 hideBrushSettings();
+var um = document.getElementById('stg-utility-menu');
+if (um) um.style.display = 'none';
+var st = document.getElementById('stg-shape-toolbar');
+if (st) st.style.transform = 'translateX(-50%) translateY(100%)';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -1262,14 +1437,32 @@ function onTool(act) {
 if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
-if (act === 'color') {
+if (act === 'undo') { undo(); return; }
+if (act === 'redo') { redo(); return; }
+if (act === 'utility') {
 hideBrushSettings();
 var pp = document.getElementById('stg-palette');
-if (pp) {
-if (pp.style.display === 'block') {
-pp.style.display = 'none';
+if (pp) pp.style.display = 'none';
+var um = document.getElementById('stg-utility-menu');
+if (um) {
+if (um.style.display === 'flex') {
+um.style.display = 'none';
 } else {
-pp.style.display = 'block';
+um.style.display = 'flex';
+}
+}
+return;
+}
+if (act === 'color') {
+hideBrushSettings();
+var um2 = document.getElementById('stg-utility-menu');
+if (um2) um2.style.display = 'none';
+var pp2 = document.getElementById('stg-palette');
+if (pp2) {
+if (pp2.style.display === 'block') {
+pp2.style.display = 'none';
+} else {
+pp2.style.display = 'block';
 }
 }
 return;
@@ -1283,16 +1476,20 @@ hilite();
 updatePointer();
 hideBrushSettings();
 }
-var pp2 = document.getElementById('stg-palette');
-if (pp2) pp2.style.display = 'none';
+var pp3 = document.getElementById('stg-palette');
+if (pp3) pp3.style.display = 'none';
+var um3 = document.getElementById('stg-utility-menu');
+if (um3) um3.style.display = 'none';
 return;
 }
 tool = act;
 hilite();
 updatePointer();
 hideBrushSettings();
-var pp3 = document.getElementById('stg-palette');
-if (pp3) pp3.style.display = 'none';
+var pp4 = document.getElementById('stg-palette');
+if (pp4) pp4.style.display = 'none';
+var um4 = document.getElementById('stg-utility-menu');
+if (um4) um4.style.display = 'none';
 }
 
 function hilite() {
@@ -1392,7 +1589,12 @@ ctx.lineWidth = stroke.size;
 
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
-if (!drawing || tool === 'mouse') {
+if (!drawing || tool === 'mouse') return;
+if (tool === 'eyedropper') {
+pickColorFromCanvas(cv, e);
+tool = 'brush';
+hilite();
+updatePointer();
 return;
 }
 e.preventDefault();
@@ -1452,6 +1654,7 @@ if (mid !== null && currentStroke.points.length > 0) {
 if (!graffitiStore[mid]) {
 graffitiStore[mid] = {strokes: []};
 }
+pushHistory(mid);
 graffitiStore[mid].strokes.push(currentStroke);
 }
 }
@@ -1465,6 +1668,71 @@ pressing = false;
 lastCanvas = null;
 currentStroke = null;
 });
+}
+
+function pickColorFromCanvas(cv, e) {
+var pos = getPos(cv, e);
+var ctx = cv.getContext('2d');
+var pixel = ctx.getImageData(pos.x, pos.y, 1, 1).data;
+var hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+applyColor(hex);
+toast('取色: ' + hex);
+}
+
+function pushHistory(mid) {
+if (!historyStacks[mid]) historyStacks[mid] = [];
+if (!redoStacks[mid]) redoStacks[mid] = [];
+var snapshot = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
+historyStacks[mid].push(snapshot);
+if (historyStacks[mid].length > MAX_HISTORY) {
+historyStacks[mid].shift();
+}
+redoStacks[mid] = [];
+}
+
+function undo() {
+var mid = getCurrentMesId();
+if (!mid) { toast('无法撤销'); return; }
+if (!historyStacks[mid] || historyStacks[mid].length === 0) {
+toast('没有可撤销的操作');
+return;
+}
+if (!redoStacks[mid]) redoStacks[mid] = [];
+var current = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
+redoStacks[mid].push(current);
+var prev = historyStacks[mid].pop();
+graffitiStore[mid].strokes = prev;
+redrawCurrentCanvas();
+toast('已撤销');
+}
+
+function redo() {
+var mid = getCurrentMesId();
+if (!mid) { toast('无法恢复'); return; }
+if (!redoStacks[mid] || redoStacks[mid].length === 0) {
+toast('没有可恢复的操作');
+return;
+}
+var next = redoStacks[mid].pop();
+pushHistory(mid);
+graffitiStore[mid].strokes = next;
+redrawCurrentCanvas();
+toast('已恢复');
+}
+
+function getCurrentMesId() {
+if (!lastCanvas) {
+var all = document.querySelectorAll('.stg-canvas');
+if (all.length > 0) lastCanvas = all[all.length - 1];
+}
+return lastCanvas ? getMesId(lastCanvas) : null;
+}
+
+function redrawCurrentCanvas() {
+if (!lastCanvas) return;
+var mid = getMesId(lastCanvas);
+if (!mid || !graffitiStore[mid]) return;
+redrawCanvas(lastCanvas, graffitiStore[mid]);
 }
 
 function getPos(cv, e) {
@@ -1503,10 +1771,11 @@ var ctx = all[i].getContext('2d');
 ctx.clearRect(0, 0, all[i].width, all[i].height);
 var mid = getMesId(all[i]);
 if (mid !== null && graffitiStore[mid]) {
+pushHistory(mid);
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
 }
 
 function saveData() {
