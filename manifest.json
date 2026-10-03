@@ -1,10 +1,11 @@
 {
   "display_name": "ST Graffiti",
-  "name": "STGraffiti",
-  "id": "st-graffiti",
-  "version": "1.0.0",
-  "type": "extension",
+  "loading_order": 1,
+  "requires": [],
+  "optional": [],
   "js": "index.js",
   "css": "style.css",
-  "author": "stringkilo777"
+  "author": "stringkilo777",
+  "version": "1.0.0",
+  "auto_update": true
 }
