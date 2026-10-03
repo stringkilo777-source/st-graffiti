@@ -239,7 +239,7 @@
     });
   }
 
- function makePalette() {
+  function makePalette() {
   if (document.getElementById('stg-palette')) return;
 
   var panel = document.createElement('div');
@@ -281,30 +281,44 @@
   drawRing(ringCv);
   drawSquare(sqCv, paletteHue);
 
+  var ringDown = false;
+  var sqDown = false;
+
   ringCv.addEventListener('pointerdown', function (e) {
     e.preventDefault();
     e.stopPropagation();
-    pickRing(ringCv, sqCv, e);ringCv.setPointerCapture(e.pointerId);
-  });ringCv.addEventListener('pointermove', function (e) {
-    if (e.pressure > 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      pickRing(ringCv, sqCv, e);
-    }
+    ringDown = true;
+    pickRing(ringCv, sqCv, e);
+  });
+  ringCv.addEventListener('pointermove', function (e) {
+    if (!ringDown) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pickRing(ringCv, sqCv, e);
+  });
+  ringCv.addEventListener('pointerup', function () {
+    ringDown = false;});
+  ringCv.addEventListener('pointercancel', function () {
+    ringDown = false;
   });
 
   sqCv.addEventListener('pointerdown', function (e) {
     e.preventDefault();
     e.stopPropagation();
+    sqDown = true;
     pickSquare(sqCv, e);
-    sqCv.setPointerCapture(e.pointerId);
   });
   sqCv.addEventListener('pointermove', function (e) {
-    if (e.pressure > 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      pickSquare(sqCv, e);
-    }
+    if (!sqDown) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pickSquare(sqCv, e);
+  });
+  sqCv.addEventListener('pointerup', function () {
+    sqDown = false;
+  });
+  sqCv.addEventListener('pointercancel', function () {
+    sqDown = false;
   });
 }
 
@@ -345,7 +359,7 @@ function drawSquare(cv, hue) {
 
 function pickRing(ringCv, sqCv, e) {
   var rect = ringCv.getBoundingClientRect();
-  var x = e.clientX - rect.left - 100;
+  var x = e.clientX - rect.left -100;
   var y = e.clientY - rect.top - 100;
   var dist = Math.sqrt(x * x + y * y);
   if (dist < 60|| dist > 100) return;
@@ -374,7 +388,7 @@ function hsvToRgb(h, s, v) {
   var p = v * (1 - s);
   var q = v * (1 - f * s);
   var t = v * (1 - (1 - f) * s);
-  var r = 0;
+  var r =0;
   var g = 0;
   var b = 0;
   switch (i % 6) {
@@ -408,8 +422,7 @@ function togglePalette() {
   var panel = document.getElementById('stg-palette');
   if (!panel) return;
   if (panel.classList.contains('stg-show')) {
-    panel.classList.remove('stg-show');
-  } else {
+    panel.classList.remove('stg-show');} else {
     panel.classList.add('stg-show');
   }
 }
