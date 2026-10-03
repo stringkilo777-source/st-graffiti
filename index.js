@@ -104,6 +104,7 @@ var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
 var shapePreviewCanvas = null;
+var eyedropperActive = false;
 
 function startPlugin() {
 loadData();
@@ -582,14 +583,14 @@ ui.style.display = 'none';
 
 var magnifier = document.createElement('div');
 magnifier.id = 'stg-magnifier';
-magnifier.style.position = 'absolute';
+magnifier.style.position = 'relative';
 magnifier.style.width = '120px';
 magnifier.style.height = '120px';
 magnifier.style.border = '3px solid white';
 magnifier.style.borderRadius = '50%';
 magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 16px rgba(0,0,0,0.6)';
 magnifier.style.overflow = 'hidden';
-magnifier.style.background = '#000';
+magnifier.style.background = '#1a1a1a';
 ui.appendChild(magnifier);
 
 var magCanvas = document.createElement('canvas');
@@ -637,23 +638,20 @@ magnifier.appendChild(centerDot);
 
 var colorPreview = document.createElement('div');
 colorPreview.id = 'stg-color-preview';
-colorPreview.style.position = 'absolute';
-colorPreview.style.bottom = '-50px';
-colorPreview.style.left = '50%';
-colorPreview.style.transform = 'translateX(-50%)';
+colorPreview.style.position = 'relative';
+colorPreview.style.marginTop = '12px';
 colorPreview.style.width = '80px';
 colorPreview.style.height = '36px';
 colorPreview.style.borderRadius = '8px';
 colorPreview.style.border = '3px solid white';
 colorPreview.style.boxShadow = '0 0 0 2px black, 0 2px 10px rgba(0,0,0,0.5)';
+colorPreview.style.marginLeft = '20px';
 ui.appendChild(colorPreview);
 
 var colorText = document.createElement('div');
 colorText.id = 'stg-color-text';
-colorText.style.position = 'absolute';
-colorText.style.bottom = '-80px';
-colorText.style.left = '50%';
-colorText.style.transform = 'translateX(-50%)';
+colorText.style.position = 'relative';
+colorText.style.marginTop = '8px';
 colorText.style.padding = '4px 8px';
 colorText.style.background = 'rgba(0,0,0,0.8)';
 colorText.style.color = 'white';
@@ -661,6 +659,8 @@ colorText.style.fontSize = '11px';
 colorText.style.borderRadius = '4px';
 colorText.style.whiteSpace = 'nowrap';
 colorText.style.fontFamily = 'monospace';
+colorText.style.textAlign = 'center';
+colorText.style.marginLeft = '20px';
 ui.appendChild(colorText);
 
 document.body.appendChild(ui);
@@ -668,6 +668,7 @@ document.body.appendChild(ui);
 
 function activateEyedropper() {
 tool = 'eyedropper';
+eyedropperActive = true;
 hilite();
 updatePointer();
 toast('移动鼠标取色，点击确认');
@@ -675,11 +676,15 @@ toast('移动鼠标取色，点击确认');
 var ui = document.getElementById('stg-eyedropper-ui');
 if (ui) ui.style.display = 'block';
 
+document.body.style.cursor = 'crosshair';
+
 document.addEventListener('pointermove', eyedropperMove);
 document.addEventListener('pointerdown', eyedropperClick, {capture: true});
 }
 
 function deactivateEyedropper() {
+eyedropperActive = false;
+document.body.style.cursor = '';
 document.removeEventListener('pointermove', eyedropperMove);
 document.removeEventListener('pointerdown', eyedropperClick, {capture: true});
 var ui = document.getElementById('stg-eyedropper-ui');
@@ -687,45 +692,49 @@ if (ui) ui.style.display = 'none';
 }
 
 function eyedropperMove(e) {
-if (tool !== 'eyedropper') {
+if (!eyedropperActive) {
 deactivateEyedropper();
 return;
 }
 
 var ui = document.getElementById('stg-eyedropper-ui');
-var mag = document.getElementById('stg-magnifier');
 var preview = document.getElementById('stg-color-preview');
 var colorText = document.getElementById('stg-color-text');
 var magCanvas = document.getElementById('stg-mag-canvas');
-if (!ui || !mag || !preview || !magCanvas) return;
+if (!ui || !preview || !magCanvas || !colorText) return;
 
 ui.style.left = e.clientX + 'px';
-ui.style.top = (e.clientY - 140) + 'px';
+ui.style.top = (e.clientY - 200) + 'px';
 
 var tempCanvas = document.createElement('canvas');
 tempCanvas.width = 24;
 tempCanvas.height = 24;
 var tempCtx = tempCanvas.getContext('2d');
 
-var captureX = Math.max(0, Math.min(e.clientX - 12, window.innerWidth - 24));
-var captureY = Math.max(0, Math.min(e.clientY - 12, window.innerHeight - 24));
-
-var elements = [];
 for (var dx = 0; dx < 24; dx++) {
 for (var dy = 0; dy < 24; dy++) {
-var px = captureX + dx;
-var py = captureY + dy;
+var px = e.clientX - 12 + dx;
+var py = e.clientY - 12 + dy;
+if (px < 0 || py < 0 || px >= window.innerWidth || py >= window.innerHeight) {
+tempCtx.fillStyle = 'rgb(30,30,30)';
+tempCtx.fillRect(dx, dy, 1, 1);
+continue;
+}
 var elem = document.elementFromPoint(px, py);
 if (elem && elem.id !== 'stg-eyedropper-ui' && !elem.closest('#stg-eyedropper-ui')) {
 var style = window.getComputedStyle(elem);
-var color = style.backgroundColor;
-if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
-color = style.color;
+var bgColor = style.backgroundColor;
+var txColor = style.color;
+var finalColor = 'rgb(30,30,30)';
+if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
+finalColor = bgColor;
+} else if (txColor && txColor !== 'rgba(0, 0, 0, 0)' && txColor !== 'transparent') {
+finalColor = txColor;
 }
-if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
-color = 'rgb(30,30,30)';
-}
-tempCtx.fillStyle = color;
+tempCtx.fillStyle = finalColor;
+tempCtx.fillRect(dx, dy, 1, 1);
+} else {
+tempCtx.fillStyle = 'rgb(30,30,30)';
 tempCtx.fillRect(dx, dy, 1, 1);
 }
 }
@@ -739,26 +748,24 @@ var centerPixel = tempCtx.getImageData(12, 12, 1, 1).data;
 var centerColor = rgbToHex(centerPixel[0], centerPixel[1], centerPixel[2]);
 
 preview.style.background = centerColor;
-if (colorText) {
 colorText.textContent = centerColor.toUpperCase();
-}
 
 ui.setAttribute('data-current-color', centerColor);
 }
 
 function eyedropperClick(e) {
-if (tool !== 'eyedropper') return;
+if (!eyedropperActive) return;
 e.preventDefault();
 e.stopPropagation();
 
 var ui = document.getElementById('stg-eyedropper-ui');
 var color = ui ? ui.getAttribute('data-current-color') : null;
 
-if (color && color !== '#000000') {
+if (color && color !== '#000000' && color !== '#1e1e1e') {
 applyColor(color);
 toast('已取色: ' + color);
 } else {
-toast('取色失败');
+toast('该位置无法取色');
 }
 
 tool = 'brush';
