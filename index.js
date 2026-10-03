@@ -66,6 +66,8 @@ var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
 
+var DEBUG = true;
+
 function startPlugin() {
 loadData();
 loadRecentColors();
@@ -984,24 +986,21 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function enterDraw() {
-console.log('[STG] enterDraw() called');
 drawing = true;
 tool = 'brush';
-console.log('[STG] drawing=' + drawing + ', tool=' + tool);
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.add('stg-show');
 hilite();
 var msgs = document.querySelectorAll('#chat .mes');
-console.log('[STG] found ' + msgs.length + ' messages');
 for (var i = 0; i < msgs.length; i++) {
 setupCanvas(msgs[i]);
 }
+if (DEBUG) toast('[调试] 进入涂鸦模式 tool=' + tool);
 }
 
 function exitDraw() {
-console.log('[STG] exitDraw() called');
 drawing = false;
 pressing = false;
 lastCanvas = null;
@@ -1020,7 +1019,6 @@ all[i].classList.remove('stg-active');
 }
 
 function onTool(act) {
-console.log('[STG] onTool(' + act + ') called, current tool=' + tool);
 if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
@@ -1038,21 +1036,21 @@ return;
 }
 if (act === 'brush') {
 tool = 'brush';
-console.log('[STG] tool set to brush');
 hilite();
 updatePointer();
 var pp2 = document.getElementById('stg-palette');
 if (pp2) pp2.style.display = 'none';
 toggleBrushSettings();
+if (DEBUG) toast('[调试] 工具=画笔');
 return;
 }
 tool = act;
-console.log('[STG] tool set to ' + act);
 hilite();
 updatePointer();
 hideBrushSettings();
 var pp3 = document.getElementById('stg-palette');
 if (pp3) pp3.style.display = 'none';
+if (DEBUG) toast('[调试] 工具=' + act);
 }
 
 function hilite() {
@@ -1069,14 +1067,11 @@ btns[i].classList.remove('stg-on');
 
 function updatePointer() {
 var all = document.querySelectorAll('.stg-canvas');
-console.log('[STG] updatePointer: tool=' + tool + ', drawing=' + drawing + ', canvas count=' + all.length);
 for (var i = 0; i < all.length; i++) {
 if (tool === 'mouse' || !drawing) {
 all[i].classList.remove('stg-active');
-console.log('[STG] canvas ' + i + ' remove active');
 } else {
 all[i].classList.add('stg-active');
-console.log('[STG] canvas ' + i + ' add active');
 }
 }
 }
@@ -1096,7 +1091,6 @@ cv.height = mt.clientHeight || 100;
 if (drawing && tool !== 'mouse') cv.classList.add('stg-active');
 mt.appendChild(cv);
 bindCanvas(cv);
-console.log('[STG] created new canvas, active=' + (drawing && tool !== 'mouse'));
 return cv;
 }
 
@@ -1156,9 +1150,8 @@ ctx.lineWidth = stroke.size;
 
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
-console.log('[STG] pointerdown: drawing=' + drawing + ', tool=' + tool);
 if (!drawing || tool === 'mouse') {
-console.log('[STG] pointerdown ignored');
+if (DEBUG) toast('[调试] 忽略:drawing=' + drawing + ',tool=' + tool, 1500);
 return;
 }
 e.preventDefault();
@@ -1182,7 +1175,7 @@ ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
 ctx.lineTo(pos.x +0.5, pos.y + 0.5);
 ctx.stroke();
-console.log('[STG] stroke started');
+if (DEBUG) toast('[调试] 开始绘制!', 1000);
 });
 
 cv.addEventListener('pointermove', function (e) {
@@ -1220,7 +1213,7 @@ if (!graffitiStore[mid]) {
 graffitiStore[mid] = {strokes: []};
 }
 graffitiStore[mid].strokes.push(currentStroke);
-console.log('[STG] stroke saved, total points: ' + currentStroke.points.length);
+if (DEBUG) toast('[调试] 保存笔画 ' + currentStroke.points.length + '点', 1000);
 }
 }
 pressing = false;
@@ -1274,7 +1267,7 @@ if (mid !== null && graffitiStore[mid]) {
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
 }
 
 function saveData() {
