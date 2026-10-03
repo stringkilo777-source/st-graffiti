@@ -7,6 +7,7 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
+var paletteHue = 0;
 
 function getCtx() {
 try {
@@ -265,11 +266,6 @@ panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
 
-var grid = document.createElement('div');
-grid.style.display = 'grid';
-grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-grid.style.gap = '8px';
-
 var colors = [
 '#ff0000','#ff6600','#ffcc00','#33cc00',
 '#00cccc','#0066ff','#6633ff','#cc00cc',
@@ -277,9 +273,15 @@ var colors = [
 '#ff9999','#ffcc99','#99ff99','#99ccff'
 ];
 
+var grid = document.createElement('div');
+grid.style.display = 'grid';
+grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+grid.style.gap = '8px';
+grid.style.marginBottom = '12px';
+
 for (var i = 0; i < colors.length; i++) {
 var cell = document.createElement('div');
-cell.setAttribute('data-color', colors[i]);
+cell.setAttribute('data-preset-color', colors[i]);
 cell.style.width = '32px';
 cell.style.height = '32px';
 cell.style.borderRadius = '50%';
@@ -296,27 +298,177 @@ grid.appendChild(cell);
 }
 
 panel.appendChild(grid);
-document.body.appendChild(panel);
 
 grid.addEventListener('click', function (e) {
-var cell = e.target.closest('[data-color]');
+var cell = e.target.closest('[data-preset-color]');
 if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
-var newColor = cell.getAttribute('data-color');
+var newColor = cell.getAttribute('data-preset-color');
 penColor = newColor;
-var allCells = grid.querySelectorAll('[data-color]');
+var allCells = grid.querySelectorAll('[data-preset-color]');
 for (var j = 0; j < allCells.length; j++) {
 allCells[j].style.borderColor = 'transparent';
 allCells[j].style.transform = 'scale(1)';
 }
 cell.style.borderColor = '#fff';
 cell.style.transform = 'scale(1.2)';
-toast('已选择颜色: ' + newColor);
-console.log('[STG] 已选颜色:', newColor);
+toast('已选择: ' + newColor);
 });
 
+var ringWrap = document.createElement('div');
+ringWrap.style.position = 'relative';
+ringWrap.style.width = '180px';
+ringWrap.style.height = '180px';
+ringWrap.style.margin = '0 auto';
+
+var ringCv = document.createElement('canvas');
+ringCv.width = 180;
+ringCv.height = 180;
+ringCv.style.position = 'absolute';
+ringCv.style.top = '0';
+ringCv.style.left = '0';
+ringCv.style.borderRadius = '50%';
+ringCv.style.touchAction = 'none';
+ringWrap.appendChild(ringCv);
+
+var sqCv = document.createElement('canvas');
+sqCv.width = 100;
+sqCv.height = 100;
+sqCv.style.position = 'absolute';
+sqCv.style.top = '40px';
+sqCv.style.left = '40px';
+sqCv.style.borderRadius = '4px';
+sqCv.style.touchAction = 'none';
+ringWrap.appendChild(sqCv);
+
+panel.appendChild(ringWrap);
+
+document.body.appendChild(panel);
+
+drawRing(ringCv);
+drawSquare(sqCv, paletteHue);
+
+var ringDown = false;
+var sqDown = false;
+
+ringCv.addEventListener('pointerdown', function (e) {
+e.preventDefault();
+e.stopPropagation();
+ringDown = true;
+pickRing(ringCv, sqCv, e);
+});
+ringCv.addEventListener('pointermove', function (e) {
+if (!ringDown) return;
+e.preventDefault();
+e.stopPropagation();
+pickRing(ringCv, sqCv, e);
+});
+ringCv.addEventListener('pointerup', function () { ringDown = false; });
+ringCv.addEventListener('pointercancel', function () { ringDown = false; });
+
+sqCv.addEventListener('pointerdown', function (e) {
+e.preventDefault();
+e.stopPropagation();
+sqDown = true;
+pickSquare(sqCv, e);
+});
+sqCv.addEventListener('pointermove', function (e) {
+if (!sqDown) return;
+e.preventDefault();
+e.stopPropagation();
+pickSquare(sqCv, e);
+});
+sqCv.addEventListener('pointerup', function () { sqDown = false; });
+sqCv.addEventListener('pointercancel', function () { sqDown = false; });
+
 console.log('[STG] 调色板已创建');
+}
+
+function drawRing(cv) {
+var ctx = cv.getContext('2d');
+var cx = 90;
+var cy = 90;
+var outerR = 88;
+var innerR = 68;
+ctx.clearRect(0, 0, 180, 180);
+for (var angle = 0; angle < 360; angle++) {
+var rad1 = (angle - 0.5) * Math.PI / 180;
+var rad2 = (angle + 1.5) * Math.PI / 180;
+ctx.beginPath();
+ctx.arc(cx, cy, outerR, rad1, rad2);
+ctx.arc(cx, cy, innerR, rad2, rad1, true);
+ctx.closePath();
+ctx.fillStyle = 'hsl(' + angle + ',100%,50%)';
+ctx.fill();
+}
+}
+
+function drawSquare(cv, hue) {
+var ctx = cv.getContext('2d');
+var w = cv.width;
+var h = cv.height;
+ctx.clearRect(0, 0, w, h);
+for (var x = 0; x < w; x++) {
+var sat = x / w;
+for (var y = 0; y < h; y++) {
+var val = 1 - y / h;
+var rgb = hsvToRgb(hue, sat, val);
+ctx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+ctx.fillRect(x, y, 1, 1);
+}
+}
+}
+
+function pickRing(ringCv, sqCv, e) {
+var rect = ringCv.getBoundingClientRect();
+var x = e.clientX - rect.left - 90;
+var y = e.clientY - rect.top - 90;
+var dist = Math.sqrt(x * x + y * y);
+if (dist < 60 || dist > 90) return;
+var angle = Math.atan2(y, x) * 180 / Math.PI;
+if (angle < 0) angle += 360;
+paletteHue = angle;
+drawSquare(sqCv, paletteHue);
+var rgb = hsvToRgb(paletteHue, 1, 1);
+penColor = rgbToHex(rgb[0], rgb[1], rgb[2]);
+toast('已选择: ' + penColor);
+}
+
+function pickSquare(sqCv, e) {
+var rect = sqCv.getBoundingClientRect();
+var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+var sat = x / rect.width;
+var val = 1 - y / rect.height;
+var rgb = hsvToRgb(paletteHue, sat, val);
+penColor = rgbToHex(rgb[0], rgb[1], rgb[2]);
+toast('已选择: ' + penColor);
+}
+
+function hsvToRgb(h, s, v) {
+h = h / 360;
+var i = Math.floor(h * 6);
+var f = h * 6 - i;
+var p = v * (1 - s);
+var q = v * (1 - f * s);
+var u = v * (1 - (1 - f) * s);
+var r = 0;
+var g = 0;
+var b = 0;
+switch (i % 6) {
+case 0: r = v; g = u; b = p; break;
+case 1: r = q; g = v; b = p; break;
+case 2: r = p; g = v; b = u; break;
+case 3: r = p; g = q; b = v; break;
+case 4: r = u; g = p; b = v; break;
+case 5: r = v; g = p; b = q; break;
+}
+return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function rgbToHex(r, g, b) {
+return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function enterDraw() {
@@ -359,11 +511,9 @@ var pp = document.getElementById('stg-palette');
 if (pp) {
 if (pp.style.display === 'block') {
 pp.style.display = 'none';
-console.log('[STG] 调色板已隐藏');
 toast('调色板已关闭');
 } else {
 pp.style.display = 'block';
-console.log('[STG] 调色板已显示');
 toast('调色板已打开');
 }
 }
