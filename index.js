@@ -274,14 +274,12 @@ panel.style.zIndex = '2000001';
 panel.style.boxShadow = '4px 0 20px rgba(0,0,0,0.5)';
 
 var grid = document.createElement('div');
-grid.className = 'stg-color-grid';
 grid.style.display = 'grid';
 grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
 grid.style.gap = '6px';
 
 for (var i = 0; i < STG_COLORS.length; i++) {
 var cell = document.createElement('div');
-cell.className = 'stg-color-cell';
 cell.setAttribute('data-stg-color', STG_COLORS[i]);
 cell.style.width = '30px';
 cell.style.height = '30px';
@@ -300,22 +298,22 @@ panel.appendChild(grid);
 document.body.appendChild(panel);
 
 grid.addEventListener('click', function (e) {
-var cell = e.target.closest('.stg-color-cell');
+var cell = e.target.closest('[data-stg-color]');
 if (!cell) return;
 e.preventDefault();
 e.stopPropagation();
 penColor = cell.getAttribute('data-stg-color');
-var allCells = grid.querySelectorAll('.stg-color-cell');
+var allCells = grid.querySelectorAll('[data-stg-color]');
 for (var j = 0; j < allCells.length; j++) {
 allCells[j].style.borderColor = 'transparent';
 allCells[j].style.transform = 'scale(1)';
 }
 cell.style.borderColor = '#fff';
 cell.style.transform = 'scale(1.15)';
-console.log('[STG] 选择颜色:', penColor);
+console.log('[STG] 已选颜色:', penColor);
 });
 
-console.log('[STG] 调色板已创建');
+console.log('[STG] 调色板创建完成');
 }
 
 function enterDraw() {
@@ -358,8 +356,10 @@ var pp = document.getElementById('stg-palette');
 if (pp) {
 if (pp.style.display === 'block') {
 pp.style.display = 'none';
+console.log('[STG] 调色板已隐藏');
 } else {
 pp.style.display = 'block';
+console.log('[STG] 调色板已显示');
 }
 }
 return;
