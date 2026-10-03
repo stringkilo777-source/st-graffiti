@@ -489,16 +489,19 @@ ringCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 ringDown = true;
-pickRing(ringCv, sqCv, ringCursor, e);
+pickRing(ringCv, sqCv, ringCursor, e, false);
 });
 ringCv.addEventListener('pointermove', function (e) {
 if (!ringDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickRing(ringCv, sqCv, ringCursor, e);
+pickRing(ringCv, sqCv, ringCursor, e, false);
 });
 ringCv.addEventListener('pointerup', function (e) {
 e.stopPropagation();
+if (ringDown) {
+pickRing(ringCv, sqCv, ringCursor, e, true);
+}
 ringDown = false;
 });
 ringCv.addEventListener('pointercancel', function (e) {
@@ -510,16 +513,19 @@ sqCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 sqDown = true;
-pickSquare(sqCv, sqCursor, e);
+pickSquare(sqCv, sqCursor, e, false);
 });
 sqCv.addEventListener('pointermove', function (e) {
 if (!sqDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickSquare(sqCv, sqCursor, e);
+pickSquare(sqCv, sqCursor, e, false);
 });
 sqCv.addEventListener('pointerup', function (e) {
 e.stopPropagation();
+if (sqDown) {
+pickSquare(sqCv, sqCursor, e, true);
+}
 sqDown = false;
 });
 sqCv.addEventListener('pointercancel', function (e) {
@@ -538,21 +544,21 @@ panel.appendChild(labelHSV);
 var hRow = makeSlider('H', 0, 360, paletteH, function (v) {
 paletteH = v;
 drawSquare(sqCv, paletteH);
-updateColorFromHSV();
+previewColorFromHSV();
 updateSquareCursor(sqCursor);
 });
 panel.appendChild(hRow);
 
 var sRow = makeSlider('S', 0, 100, paletteS * 100, function (v) {
 paletteS = v / 100;
-updateColorFromHSV();
+previewColorFromHSV();
 updateSquareCursor(sqCursor);
 });
 panel.appendChild(sRow);
 
 var vRow = makeSlider('V', 0, 100, paletteV * 100, function (v) {
 paletteV = v / 100;
-updateColorFromHSV();
+previewColorFromHSV();
 updateSquareCursor(sqCursor);
 });
 panel.appendChild(vRow);
@@ -596,6 +602,13 @@ valTxt.style.textAlign = 'right';
 valTxt.style.userSelect = 'none';
 row.appendChild(valTxt);
 
+var sliderDragging = false;
+
+slider.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+sliderDragging = true;
+});
+
 slider.addEventListener('input', function (e) {
 e.stopPropagation();
 var v = parseFloat(slider.value);
@@ -603,17 +616,24 @@ valTxt.textContent = Math.round(v);
 onChange(v);
 });
 
-slider.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-slider.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
 slider.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+if (sliderDragging) {
+confirmColorFromHSV();
+}
+sliderDragging = false;
+});
+
+slider.addEventListener('pointermove', function (e) {
 e.stopPropagation();
 });
 
 return row;
+}
+
+function previewColor(color) {
+penColor = color;
+updateColorIndicator();
 }
 
 function applyColor(color) {
@@ -623,7 +643,13 @@ updateColorIndicator();
 toast('已选择: ' + color);
 }
 
-function updateColorFromHSV() {
+function previewColorFromHSV() {
+var rgb = hsvToRgb(paletteH, paletteS, paletteV);
+var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+previewColor(hex);
+}
+
+function confirmColorFromHSV() {
 var rgb = hsvToRgb(paletteH, paletteS, paletteV);
 var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
 applyColor(hex);
@@ -670,7 +696,7 @@ ctx.fillRect(x, y, 1, 1);
 }
 }
 
-function pickRing(ringCv, sqCv, ringCursor, e) {
+function pickRing(ringCv, sqCv, ringCursor, e, confirm) {
 var rect = ringCv.getBoundingClientRect();
 var x = e.clientX - rect.left - 90;
 var y = e.clientY - rect.top - 90;
@@ -680,26 +706,36 @@ var angle = Math.atan2(y, x) * 180 / Math.PI;
 if (angle < 0) angle += 360;
 paletteH = angle;
 drawSquare(sqCv, paletteH);
-updateColorFromHSV();
 
 var rad = angle * Math.PI / 180;
 var cursorDist = 79;
 ringCursor.style.display = 'block';
 ringCursor.style.left = (90 + cursorDist * Math.cos(rad) - 5) + 'px';
 ringCursor.style.top = (90 + cursorDist * Math.sin(rad) - 5) + 'px';
+
+if (confirm) {
+confirmColorFromHSV();
+} else {
+previewColorFromHSV();
+}
 }
 
-function pickSquare(sqCv, sqCursor, e) {
+function pickSquare(sqCv, sqCursor, e, confirm) {
 var rect = sqCv.getBoundingClientRect();
 var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
 var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
 paletteS = x / rect.width;
 paletteV = 1 - y / rect.height;
-updateColorFromHSV();
 
 sqCursor.style.display = 'block';
 sqCursor.style.left = (40 + x - 5) + 'px';
 sqCursor.style.top = (40 + y - 5) + 'px';
+
+if (confirm) {
+confirmColorFromHSV();
+} else {
+previewColorFromHSV();
+}
 }
 
 function hsvToRgb(h, s, v) {
