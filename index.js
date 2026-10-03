@@ -100,6 +100,9 @@ var fabSL = 0;
 var fabST = 0;
 var brushSettingsTab = 'brushes';
 var shapeMode = null;
+var shapeStartX = 0;
+var shapeStartY = 0;
+var shapeDrawing = false;
 
 function startPlugin() {
 loadData();
@@ -459,8 +462,8 @@ var bar = document.createElement('div');
 bar.id = 'stg-shape-toolbar';
 bar.style.position = 'fixed';
 bar.style.left = '50%';
-bar.style.transform = 'translateX(-50%) translateY(100%)';
-bar.style.bottom = '80px';
+bar.style.bottom = '20px';
+bar.style.transform = 'translateX(-50%) translateY(150%)';
 bar.style.display = 'flex';
 bar.style.gap = '6px';
 bar.style.padding = '8px 12px';
@@ -472,10 +475,10 @@ bar.style.transition = 'transform 0.3s ease';
 
 var shapes = [
 {id: 'line', label: '—', title: '直线'},
-{id: 'wave', label: '~', title: '波浪线'},
 {id: 'rect', label: '▢', title: '矩形'},
 {id: 'ellipse', label: '○', title: '椭圆'},
-{id: 'curve', label: '⌢', title: '曲线'}
+{id: 'arrow', label: '→', title: '箭头'},
+{id: 'close', label: '✕', title: '关闭'}
 ];
 
 for (var i = 0; i < shapes.length; i++) {
@@ -503,14 +506,23 @@ bar.addEventListener('click', function(e) {
 var btn = e.target.closest('[data-shape]');
 if (!btn) return;
 var sid = btn.getAttribute('data-shape');
+if (sid === 'close') {
+hideShapeToolbar();
+return;
+}
 shapeMode = sid;
+tool = 'shape';
 var allBtns = bar.querySelectorAll('.stg-shape-btn');
 for (var j = 0; j < allBtns.length; j++) {
-allBtns[j].style.background = 'transparent';
-allBtns[j].style.color = '#ccc';
+var sbtn = allBtns[j];
+if (sbtn.getAttribute('data-shape') === 'close') continue;
+sbtn.style.background = 'transparent';
+sbtn.style.color = '#ccc';
 }
 btn.style.background = 'rgba(255,133,157,0.2)';
 btn.style.color = '#ff859d';
+hilite();
+updatePointer();
 toast('已选择形状: ' + getShapeName(sid));
 });
 
@@ -525,10 +537,9 @@ e.stopPropagation();
 function getShapeName(id) {
 var names = {
 line: '直线',
-wave: '波浪线',
 rect: '矩形',
 ellipse: '椭圆',
-curve: '曲线'
+arrow: '箭头'
 };
 return names[id] || id;
 }
@@ -537,9 +548,22 @@ function toggleShapeToolbar() {
 var bar = document.getElementById('stg-shape-toolbar');
 if (!bar) return;
 if (bar.style.transform.indexOf('translateY(0)') > -1) {
-bar.style.transform = 'translateX(-50%) translateY(100%)';
+bar.style.transform = 'translateX(-50%) translateY(150%)';
 } else {
 bar.style.transform = 'translateX(-50%) translateY(0)';
+}
+}
+
+function hideShapeToolbar() {
+var bar = document.getElementById('stg-shape-toolbar');
+if (bar) {
+bar.style.transform = 'translateX(-50%) translateY(150%)';
+}
+shapeMode = null;
+if (tool === 'shape') {
+tool = 'brush';
+hilite();
+updatePointer();
 }
 }
 
@@ -1416,13 +1440,13 @@ drawing = false;
 pressing = false;
 lastCanvas = null;
 currentStroke = null;
+shapeDrawing = false;
 var pp = document.getElementById('stg-palette');
 if (pp) pp.style.display = 'none';
 hideBrushSettings();
 var um = document.getElementById('stg-utility-menu');
 if (um) um.style.display = 'none';
-var st = document.getElementById('stg-shape-toolbar');
-if (st) st.style.transform = 'translateX(-50%) translateY(100%)';
+hideShapeToolbar();
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -1540,12 +1564,14 @@ return mes ? mes.getAttribute('mesid') : null;
 
 function getToolWidth() {
 if (tool === 'eraser') return eraserWidth;
+if (tool === 'shape') return penWidth;
 if (brushType === 'highlighter') return highlighterWidth;
 return penWidth;
 }
 
 function getToolOpacity() {
 if (tool === 'eraser') return 1.0;
+if (tool === 'shape') return penOpacity;
 if (brushType === 'highlighter') return highlighterOpacity;
 return penOpacity;
 }
@@ -1597,6 +1623,16 @@ hilite();
 updatePointer();
 return;
 }
+if (tool === 'shape' && shapeMode) {
+e.preventDefault();
+shapeDrawing = true;
+lastCanvas = cv;
+cv.setPointerCapture(e.pointerId);
+var pos = getPos(cv, e);
+shapeStartX = pos.x;
+shapeStartY = pos.y;
+return;
+}
 e.preventDefault();
 pressing = true;
 lastCanvas = cv;
@@ -1621,6 +1657,9 @@ ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
+if (shapeDrawing && cv === lastCanvas) {
+return;
+}
 if (!pressing || cv !== lastCanvas) return;
 e.preventDefault();
 var pos = getPos(cv, e);
@@ -1647,7 +1686,17 @@ currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
 }
 });
 
-cv.addEventListener('pointerup', function () {
+cv.addEventListener('pointerup', function (e) {
+if (shapeDrawing && cv === lastCanvas) {
+var pos = getPos(cv, e);
+drawShape(cv, shapeStartX, shapeStartY, pos.x, pos.y);
+shapeDrawing = false;
+lastCanvas = null;
+if (cv.hasPointerCapture(e.pointerId)) {
+cv.releasePointerCapture(e.pointerId);
+}
+return;
+}
 if (pressing && currentStroke && lastCanvas) {
 var mid = getMesId(lastCanvas);
 if (mid !== null && currentStroke.points.length > 0) {
@@ -1665,21 +1714,92 @@ currentStroke = null;
 
 cv.addEventListener('pointercancel', function () {
 pressing = false;
+shapeDrawing = false;
 lastCanvas = null;
 currentStroke = null;
 });
 }
 
+function drawShape(cv, x1, y1, x2, y2) {
+var ctx = cv.getContext('2d');
+ctx.globalCompositeOperation = 'source-over';
+ctx.globalAlpha = penOpacity;
+ctx.strokeStyle = penColor;
+ctx.lineWidth = penWidth;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
+
+var mid = getMesId(cv);
+if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
+saveHistory(mid);
+
+var pts = [];
+ctx.beginPath();
+if (shapeMode === 'line') {
+ctx.moveTo(x1, y1);
+ctx.lineTo(x2, y2);
+pts = [{x: x1 / cv.width, y: y1 / cv.height}, {x: x2 / cv.width, y: y2 / cv.height}];
+} else if (shapeMode === 'rect') {
+ctx.rect(x1, y1, x2 - x1, y2 - y1);
+pts = [
+{x: x1 / cv.width, y: y1 / cv.height},
+{x: x2 / cv.width, y: y1 / cv.height},
+{x: x2 / cv.width, y: y2 / cv.height},
+{x: x1 / cv.width, y: y2 / cv.height},
+{x: x1 / cv.width, y: y1 / cv.height}
+];
+} else if (shapeMode === 'ellipse') {
+var cx = (x1 + x2) / 2;
+var cy = (y1 + y2) / 2;
+var rx = Math.abs(x2 - x1) / 2;
+var ry = Math.abs(y2 - y1) / 2;
+ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+for (var a = 0; a <= 360; a += 10) {
+var rad = a * Math.PI / 180;
+pts.push({
+x: (cx + rx * Math.cos(rad)) / cv.width,
+y: (cy + ry * Math.sin(rad)) / cv.height
+});
+}
+} else if (shapeMode === 'arrow') {
+ctx.moveTo(x1, y1);
+ctx.lineTo(x2, y2);
+var angle = Math.atan2(y2 - y1, x2 - x1);
+var headLen = 15;
+ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+ctx.moveTo(x2, y2);
+ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+pts = [{x: x1 / cv.width, y: y1 / cv.height}, {x: x2 / cv.width, y: y2 / cv.height}];
+}
+ctx.stroke();
+
+if (pts.length > 0) {
+graffitiStore[mid].strokes.push({
+tool: 'shape',
+shapeMode: shapeMode,
+color: penColor,
+size: penWidth,
+opacity: penOpacity,
+points: pts
+});
+}
+}
+
 function pickColorFromCanvas(cv, e) {
 var pos = getPos(cv, e);
 var ctx = cv.getContext('2d');
+try {
 var pixel = ctx.getImageData(Math.floor(pos.x), Math.floor(pos.y), 1, 1).data;
-if (pixel[3] === 0) {
+if (pixel[3] < 10) {
 toast('该位置无颜色');
 return;
 }
 var hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
 applyColor(hex);
+} catch (err) {
+toast('取色失败');
+console.warn('[STG] eyedropper error:', err);
+}
 }
 
 function saveHistory(mid) {
@@ -1756,14 +1876,33 @@ var h = cv.height;
 for (var s = 0; s < data.strokes.length; s++) {
 var stroke = data.strokes[s];
 if (!stroke.points || stroke.points.length < 1) continue;
-setupBrushFor(ctx, stroke);
+if (stroke.tool === 'shape') {
+ctx.globalCompositeOperation = 'source-over';
+ctx.globalAlpha = stroke.opacity || 1.0;
+ctx.strokeStyle = stroke.color;
+ctx.lineWidth = stroke.size;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
 ctx.beginPath();
 var first = stroke.points[0];
 ctx.moveTo(first.x * w, first.y * h);
 for (var p = 1; p < stroke.points.length; p++) {
 ctx.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
 }
+if (stroke.shapeMode === 'ellipse' || stroke.shapeMode === 'rect') {
+ctx.closePath();
+}
 ctx.stroke();
+} else {
+setupBrushFor(ctx, stroke);
+ctx.beginPath();
+var first2 = stroke.points[0];
+ctx.moveTo(first2.x * w, first2.y * h);
+for (var p2 = 1; p2 < stroke.points.length; p2++) {
+ctx.lineTo(stroke.points[p2].x * w, stroke.points[p2].y * h);
+}
+ctx.stroke();
+}
 }
 ctx.globalCompositeOperation = 'source-over';
 ctx.globalAlpha = 1;
