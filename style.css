@@ -87,10 +87,11 @@
 .stg-sep {
   width: 26px;
   height: 1px;
-  background: rgba(255,255,255,0.1);margin: 2px auto;
+  background: rgba(255,255,255,0.1);
+  margin: 2px auto;
 }
 
-/*===== 颜色按钮里的小圆点 ===== */
+/*===== 颜色按钮小圆点 ===== */
 .stg-color-dot {
   width: 18px;
   height: 18px;
@@ -130,7 +131,7 @@
   user-select: none;
 }
 
-/*色环：3行4列网格 */
+/*色环网格 */
 .stg-hue-ring {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -144,7 +145,6 @@
   border-radius: 50%;
   border: 2px solid transparent;
   box-sizing: border-box;
-  cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
@@ -157,7 +157,7 @@
   transform: scale(1.1);
 }
 
-/* 明暗方块区*/
+/* 明暗方块 */
 .stg-shade-label {
   font-size: 10px;
   color: #666;
@@ -177,7 +177,6 @@
   border-radius: 6px;
   border: 2px solid transparent;
   box-sizing: border-box;
-  cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
@@ -190,7 +189,7 @@
   transform: scale(1.1);
 }
 
-/*===== Toast===== */
+/* ===== Toast===== */
 #stg-toast {
   position: fixed;
   top: 60px;
