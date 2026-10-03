@@ -7,6 +7,7 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
+var paletteHue = 0;
 
 function getCtx() {
 try {
@@ -56,14 +57,13 @@ var fabSX = 0;
 var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
-var paletteHue = 0;
 
 function startPlugin() {
 loadData();
 makeToast();
 makeFab();
 makeToolbar();
-makePalette();
+try { makePalette(); } catch(e) { console.warn('[STG] palette error', e); }
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -126,9 +126,9 @@ return p;
 return getDefaultFabPos();
 }
 
-function saveFabPos(l, t) {
+function saveFabPos(l, tVal) {
 try {
-localStorage.setItem('stg_fab_pos', JSON.stringify({left: l, top: t}));
+localStorage.setItem('stg_fab_pos', JSON.stringify({left: l, top: tVal}));
 } catch (e) {}
 }
 
@@ -245,13 +245,13 @@ bar.appendChild(btn);
 document.body.appendChild(bar);
 
 bar.addEventListener('click', function (e) {
-var t = e.target.closest('[data-stg]');
-if (!t) return;
-onTool(t.getAttribute('data-stg'));
+var tgt = e.target.closest('[data-stg]');
+if (!tgt) return;
+onTool(tgt.getAttribute('data-stg'));
 });
-  }
+}
 
- function makePalette() {
+function makePalette() {
 if (document.getElementById('stg-palette')) return;
 var panel = document.createElement('div');
 panel.id = 'stg-palette';
@@ -290,74 +290,64 @@ ringCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 ringDown = true;
-pickRing(ringCv, sqCv, e);
+doPickRing(ringCv, sqCv, e);
 });
 ringCv.addEventListener('pointermove', function (e) {
 if (!ringDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickRing(ringCv, sqCv, e);
+doPickRing(ringCv, sqCv, e);
 });
-ringCv.addEventListener('pointerup', function () {
-ringDown = false;
-});
-ringCv.addEventListener('pointercancel', function () {
-ringDown = false;
-});
+ringCv.addEventListener('pointerup', function () { ringDown = false; });
+ringCv.addEventListener('pointercancel', function () { ringDown = false; });
 sqCv.addEventListener('pointerdown', function (e) {
 e.preventDefault();
 e.stopPropagation();
 sqDown = true;
-pickSquare(sqCv, e);
+doPickSquare(sqCv, e);
 });
 sqCv.addEventListener('pointermove', function (e) {
 if (!sqDown) return;
 e.preventDefault();
 e.stopPropagation();
-pickSquare(sqCv, e);
+doPickSquare(sqCv, e);
 });
-sqCv.addEventListener('pointerup', function () {
-sqDown = false;
-});
-sqCv.addEventListener('pointercancel', function () {
-sqDown = false;
-});
+sqCv.addEventListener('pointerup', function () { sqDown = false; });
+sqCv.addEventListener('pointercancel', function () { sqDown = false; });
 }
 
 function drawRing(cv) {
-var c = cv.getContext('2d');
-var cx = 100;
-var cy = 100;
-c.clearRect(0, 0, 200, 200);
+var rc = cv.getContext('2d');
+rc.clearRect(0, 0, 200, 200);
 for (var a = 0; a < 360; a++) {
 var r1 = (a - 0.5) * Math.PI / 180;
 var r2 = (a + 1.5) * Math.PI / 180;
-c.beginPath();
-c.arc(cx, cy, 98, r1, r2);
-c.arc(cx, cy, 72, r2, r1, true);
-c.closePath();
-c.fillStyle = 'hsl(' + a + ',100%,50%)';
-c.fill();
+rc.beginPath();
+rc.arc(100, 100, 98, r1, r2);
+rc.arc(100, 100, 72, r2, r1, true);
+rc.closePath();
+rc.fillStyle = 'hsl(' + a + ',100%,50%)';
+rc.fill();
 }
 }
 
 function drawSquare(cv, hue) {
-var c = cv.getContext('2d');
+var sc = cv.getContext('2d');
 var w = cv.width;
 var h = cv.height;
-c.clearRect(0, 0, w, h);
+sc.clearRect(0, 0, w, h);
 for (var x = 0; x < w; x++) {
-var s = x / w;
+var sa = x / w;
 for (var y = 0; y < h; y++) {
-var v = 1 - y / h;
-var rgb = hsvToRgb(hue, s, v);
-c.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-c.fillRect(x, y, 1, 1);
+var va = 1 - y / h;
+var rgb = stgHsvToRgb(hue, sa, va);
+sc.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+sc.fillRect(x, y, 1, 1);
 }
 }
 }
 
-function pickRing(ringCv, sqCv, e) {
+function doPickRing(ringCv, sqCv, e) {
 var rect = ringCv.getBoundingClientRect();
 var x = e.clientX - rect.left - 100;
 var y = e.clientY - rect.top - 100;
@@ -367,71 +357,68 @@ var angle = Math.atan2(y, x) * 180 / Math.PI;
 if (angle < 0) angle += 360;
 paletteHue = angle;
 drawSquare(sqCv, paletteHue);
-var rgb = hsvToRgb(paletteHue, 1, 1);
-applyColor(rgbToHex2(rgb[0], rgb[1], rgb[2]));
+var rgb = stgHsvToRgb(paletteHue, 1, 1);
+penColor = '#' + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
+updatePreview();
 }
 
-function pickSquare(sqCv, e) {
+function doPickSquare(sqCv, e) {
 var rect = sqCv.getBoundingClientRect();
 var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
 var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-var sat = x / rect.width;
-var val = 1 - y / rect.height;
-var rgb = hsvToRgb(paletteHue, sat, val);
-applyColor(rgbToHex2(rgb[0], rgb[1], rgb[2]));
+var sa = x / rect.width;
+var va = 1 - y / rect.height;
+var rgb = stgHsvToRgb(paletteHue, sa, va);
+penColor = '#' + ((1 << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]).toString(16).slice(1);
+updatePreview();
 }
 
-function hsvToRgb(h, s, v) {
+function stgHsvToRgb(h, s, v) {
 h = h / 360;
 var i = Math.floor(h * 6);
 var f = h * 6 - i;
 var p = v * (1 - s);
 var q = v * (1 - f * s);
-var tt = v * (1 - (1 - f) * s);
+var u = v * (1 - (1 - f) * s);
 var r =0;
 var g = 0;
 var b = 0;
 switch (i % 6) {
-case 0: r = v; g = tt; b = p; break;
+case 0: r = v; g = u; b = p; break;
 case 1: r = q; g = v; b = p; break;
-case 2: r = p; g = v; b = tt; break;
+case 2: r = p; g = v; b = u; break;
 case 3: r = p; g = q; b = v; break;
-case 4: r = tt; g = p; b = v; break;
+case 4: r = u; g = p; b = v; break;
 case 5: r = v; g = p; b = q; break;
 }
 return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-function rgbToHex2(r, g, b) {
-return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-}
-
-function applyColor(color) {
-penColor = color;
+function updatePreview() {
+var prevBox = document.getElementById('stg-preview-box');
+if (prevBox) prevBox.style.background = penColor;
+var prevHex = document.getElementById('stg-preview-hex');
+if (prevHex) prevHex.textContent = penColor;
 var fab = document.getElementById('stg-fab');
 if (fab) {
-fab.style.borderColor = color;
-fab.style.color = color;
+fab.style.borderColor = penColor;
+fab.style.color = penColor;
 }
-var prevBox = document.getElementById('stg-preview-box');
-if (prevBox) prevBox.style.background = color;
-var prevHex = document.getElementById('stg-preview-hex');
-if (prevHex) prevHex.textContent = color;
 }
 
 function togglePalette() {
 var panel = document.getElementById('stg-palette');
 if (!panel) return;
-if (panel.classList.contains('stg-show')) {
-panel.classList.remove('stg-show');
+if (panel.style.display === 'block') {
+panel.style.display = 'none';
 } else {
-panel.classList.add('stg-show');
+panel.style.display = 'block';
 }
 }
 
 function hidePalette() {
 var panel = document.getElementById('stg-palette');
-if (panel) panel.classList.remove('stg-show');
+if (panel) panel.style.display = 'none';
 }
 
 function enterDraw() {
@@ -498,7 +485,7 @@ all[i].classList.add('stg-active');
 }
 }
 
- function setupCanvas(mesEl) {
+function setupCanvas(mesEl) {
 var mt = mesEl.querySelector('.mes_text');
 if (!mt) return null;
 var existing = mt.querySelector('.stg-canvas');
@@ -680,7 +667,7 @@ delete graffitiStore[keys[i]];
 }
 var count = Object.keys(graffitiStore).length;
 if (count > MAX_GRAFFITI) {
-toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI +') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
+toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI + ') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
 return;
 }
 try {
