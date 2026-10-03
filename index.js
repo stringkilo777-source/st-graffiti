@@ -65,6 +65,7 @@
     makeToast();
     makeFab();
     makeToolbar();
+    makeSettingsPanel();
     restoreAll();
     bindChatChange();
     observeNew();
@@ -75,8 +76,7 @@
     if (document.getElementById('stg-toast')) return;
     var el = document.createElement('div');
     el.id = 'stg-toast';
-    document.body.appendChild(el);
-  }
+    document.body.appendChild(el);}
 
   function toast(msg, ms) {
     var el = document.getElementById('stg-toast');
@@ -88,6 +88,65 @@
     }, ms || 2500);
   }
 
+  /* ---- settings panel in extensions page ---- */
+  function makeSettingsPanel() {
+    if (document.getElementById('stg-settings-panel')) return;
+
+    var targets = [
+      document.getElementById('extensions_settings2'),
+      document.getElementById('extensions_settings')
+    ];
+    var container = null;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i]) {
+        container = targets[i];
+        break;
+      }
+    }
+    if (!container) return;
+
+    var wrapper = document.createElement('div');
+    wrapper.id = 'stg-settings-panel';
+    wrapper.innerHTML =
+      '<div class="inline-drawer">' +
+        '<div class="inline-drawer-toggle inline-drawer-header">' +
+          '<b>ST Graffiti</b>' +
+          '<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>' +
+        '</div>' +
+        '<div class="inline-drawer-content" style="display:none;">' +
+          '<div style="padding:8px 0;">' +
+            '<button id="stg-reset-btn" class="menu_button" style="width:100%;">' +
+              'Reset FAB Position' +
+            '</button>' +'<small style="display:block;margin-top:4px;color:#999;">' +
+              'If the floating button is lost or stuck off screen, click this to bring it back.' +
+            '</small>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    container.appendChild(wrapper);
+
+    // drawer toggle
+    var header = wrapper.querySelector('.inline-drawer-toggle');
+    var content = wrapper.querySelector('.inline-drawer-content');
+    if (header && content) {
+      header.addEventListener('click', function () {
+        if (content.style.display === 'none') {
+          content.style.display = 'block';} else {
+          content.style.display = 'none';
+        }
+      });
+    }
+
+    // reset button
+    var resetBtn = document.getElementById('stg-reset-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        resetFabPosition();
+      });
+    }
+  }
+
+  /* ---- FAB position ---- */
   function getDefaultFabPos() {
     return {
       left: window.innerWidth - FAB_SIZE + FAB_HIDE,
@@ -120,13 +179,18 @@
     var pos = getDefaultFabPos();
     var fab = document.getElementById('stg-fab');
     if (fab) {
+      fab.style.transition = 'left 0.3s ease, top 0.3s ease';
       fab.style.left = pos.left + 'px';
       fab.style.top = pos.top + 'px';
+      fab.style.display = 'flex';
+      setTimeout(function () {
+        fab.style.transition = 'left 0.3s ease';}, 400);
     }
     saveFabPos(pos.left, pos.top);
     toast('FAB position reset!');
   }
 
+  /* ---- FAB ---- */
   function makeFab() {
     if (document.getElementById('stg-fab')) return;
     var fab = document.createElement('div');
@@ -161,8 +225,7 @@
         nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
         nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
-        fab.style.top = nt + 'px';
-      }
+        fab.style.top = nt + 'px';}
     });
 
     fab.addEventListener('pointerup', function () {
@@ -191,6 +254,7 @@
     });
   }
 
+  /* ---- toolbar ---- */
   function makeToolbar() {
     if (document.getElementById('stg-toolbar')) return;
     var bar = document.createElement('div');
@@ -205,7 +269,6 @@
       {id: 'sep2', sep: true},
       {id: 'clear', label: '\uD83D\uDDD1'},
       {id: 'save', label: '\uD83D\uDCBE'},
-      {id: 'reset', label: '\uD83D\uDCCD'},
       {id: 'exit', label: '\u2716'}
     ];
 
@@ -239,8 +302,7 @@
     var fab = document.getElementById('stg-fab');
     if (fab) fab.style.display = 'none';
     var bar = document.getElementById('stg-toolbar');
-    if (bar) bar.classList.add('stg-show');
-    hilite();
+    if (bar) bar.classList.add('stg-show');hilite();
 
     var msgs = document.querySelectorAll('#chat .mes');
     for (var i = 0; i < msgs.length; i++) {
@@ -266,8 +328,7 @@
 
   function onTool(act) {
     if (act === 'exit') {
-      exitDraw();
-      return;
+      exitDraw();return;
     }
     if (act === 'save') {
       saveData();
@@ -275,11 +336,6 @@
     }
     if (act === 'clear') {
       clearAll();
-      return;
-    }
-    if (act === 'reset') {
-      exitDraw();
-      resetFabPosition();
       return;
     }
     tool = act;
@@ -401,7 +457,7 @@
       setBrush(ctx);
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
-      ctx.lineTo(pos.x + 0.5, pos.y + 0.5);
+      ctx.lineTo(pos.x +0.5, pos.y + 0.5);
       ctx.stroke();
     });
 
@@ -412,8 +468,7 @@
       var ctx = cv.getContext('2d');
       setBrush(ctx);
       ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-      ctx.beginPath();
+      ctx.stroke();ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
 
       if (currentStroke) {
@@ -471,8 +526,7 @@
     }
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
+    ctx.globalAlpha = 1;}
 
   function clearAll() {
     var all = document.querySelectorAll('.stg-canvas');
@@ -498,7 +552,7 @@
 
     var count = Object.keys(graffitiStore).length;
     if (count > MAX_GRAFFITI) {
-      toast('Too many! (' + count + '/' + MAX_GRAFFITI + ') Clear some first.', 3500);
+      toast('Too many!(' + count + '/' + MAX_GRAFFITI + ') Clear some first.', 3500);
       return;
     }
 
@@ -526,7 +580,7 @@
       }
     } catch (e) {}
 
-    toast('Saved! (' + count + '/' + MAX_GRAFFITI + ')');
+    toast('Saved!(' + count + '/' + MAX_GRAFFITI + ')');
   }
 
   function loadData() {
