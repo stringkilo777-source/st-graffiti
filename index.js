@@ -31,7 +31,7 @@ defaultOpacity: 0.3
 }
 ];
 
-var DEFAULT_BRUSH_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNiIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjgiLz4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNCIgZmlsbD0iI2ZmZmZmZiIvPgo8L3N2Zz4=';
+var DEFAULT_BRUSH_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxMCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjMiLz48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSI2IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuOCIvPjwvc3ZnPg==';
 
 function getCtx() {
 try {
@@ -442,9 +442,9 @@ var brushList = document.createElement('div');
 brushList.id = 'stg-brush-list';
 panel.appendChild(brushList);
 
-updateBrushList();
-
 document.body.appendChild(panel);
+
+updateBrushList();
 
 panel.addEventListener('pointerdown', function (e) {
 e.stopPropagation();
@@ -498,17 +498,21 @@ toast('\u5DF2\u5207\u6362\u5230: ' + preset.name + ' (\u6765\u6E90: ' + preset.a
 }
 
 function updateBrushSliders() {
-var sizeSlider = document.querySelector('#stg-brush-settings input[type="range"]');
-var opacitySlider = document.querySelectorAll('#stg-brush-settings input[type="range"]')[1];
+var sliders = document.querySelectorAll('#stg-brush-settings input[type="range"]');
+if (sliders.length < 2) return;
+var sizeSlider = sliders[0];
+var opacitySlider = sliders[1];
 if (sizeSlider) {
 var w = getCurrentBrushWidth();
 sizeSlider.value = w;
-sizeSlider.nextElementSibling.querySelector('div').textContent = Math.round(w);
+var sizeVal = sizeSlider.parentNode.querySelector('div div');
+if (sizeVal) sizeVal.textContent = Math.round(w);
 }
 if (opacitySlider) {
 var o = getCurrentBrushOpacity() * 100;
 opacitySlider.value = o;
-opacitySlider.nextElementSibling.querySelector('div').textContent = Math.round(o);
+var opVal = opacitySlider.parentNode.querySelector('div div');
+if (opVal) opVal.textContent = Math.round(o);
 }
 }
 
