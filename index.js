@@ -103,7 +103,6 @@ var shapeMode = null;
 var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
-var shapePreviewCanvas = null;
 
 function startPlugin() {
 loadData();
@@ -116,6 +115,7 @@ makeUtilityMenu();
 makeShapeToolbar();
 makePalette();
 makeBrushSettingsPanel();
+makeEyedropperCursor();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -570,11 +570,97 @@ updatePointer();
 }
 }
 
+function makeEyedropperCursor() {
+if (document.getElementById('stg-eyedropper-cursor')) return;
+var cursor = document.createElement('div');
+cursor.id = 'stg-eyedropper-cursor';
+cursor.style.position = 'fixed';
+cursor.style.width = '24px';
+cursor.style.height = '24px';
+cursor.style.borderRadius = '50%';
+cursor.style.border = '2px solid white';
+cursor.style.boxShadow = '0 0 0 1px black, 0 2px 8px rgba(0,0,0,0.5)';
+cursor.style.pointerEvents = 'none';
+cursor.style.zIndex = '10000000';
+cursor.style.display = 'none';
+cursor.style.transform = 'translate(-50%, -50%)';
+document.body.appendChild(cursor);
+}
+
 function activateEyedropper() {
 tool = 'eyedropper';
 hilite();
 updatePointer();
-toast('取色器已激活，点击文字上的涂鸦取色');
+toast('取色器已激活，点击任意位置取色');
+var cursor = document.getElementById('stg-eyedropper-cursor');
+if (cursor) cursor.style.display = 'block';
+
+document.addEventListener('pointermove', eyedropperMove);
+document.addEventListener('pointerdown', eyedropperClick, true);
+}
+
+function deactivateEyedropper() {
+document.removeEventListener('pointermove', eyedropperMove);
+document.removeEventListener('pointerdown', eyedropperClick, true);
+var cursor = document.getElementById('stg-eyedropper-cursor');
+if (cursor) cursor.style.display = 'none';
+}
+
+function eyedropperMove(e) {
+if (tool !== 'eyedropper') {
+deactivateEyedropper();
+return;
+}
+var cursor = document.getElementById('stg-eyedropper-cursor');
+if (cursor) {
+cursor.style.left = e.clientX + 'px';
+cursor.style.top = e.clientY + 'px';
+}
+}
+
+function eyedropperClick(e) {
+if (tool !== 'eyedropper') return;
+e.preventDefault();
+e.stopPropagation();
+
+var elem = document.elementFromPoint(e.clientX, e.clientY);
+if (!elem) {
+toast('无法获取颜色');
+tool = 'brush';
+hilite();
+updatePointer();
+deactivateEyedropper();
+return;
+}
+
+var color = window.getComputedStyle(elem).color;
+if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+color = window.getComputedStyle(elem).backgroundColor;
+}
+
+if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+var hex = rgbStringToHex(color);
+applyColor(hex);
+tool = 'brush';
+hilite();
+updatePointer();
+deactivateEyedropper();
+} else {
+toast('该位置无有效颜色');
+tool = 'brush';
+hilite();
+updatePointer();
+deactivateEyedropper();
+}
+}
+
+function rgbStringToHex(rgb) {
+var match = rgb.match(/\d+/g);
+if (!match || match.length < 3) return '#000000';
+var r = parseInt(match[0]);
+var g = parseInt(match[1]);
+var b = parseInt(match[2]);
+return rgbToHex(r, g, b);
 }
 
 function updateColorIndicator() {
@@ -1444,6 +1530,7 @@ pressing = false;
 lastCanvas = null;
 currentStroke = null;
 shapeDrawing = false;
+deactivateEyedropper();
 var pp = document.getElementById('stg-palette');
 if (pp) pp.style.display = 'none';
 hideBrushSettings();
@@ -1534,7 +1621,7 @@ btns[i].classList.remove('stg-on');
 function updatePointer() {
 var all = document.querySelectorAll('.stg-canvas');
 for (var i = 0; i < all.length; i++) {
-if (tool === 'mouse' || !drawing) {
+if (tool === 'mouse' || tool === 'eyedropper' || !drawing) {
 all[i].classList.remove('stg-active');
 } else {
 all[i].classList.add('stg-active');
@@ -1547,14 +1634,14 @@ var mt = mesEl.querySelector('.mes_text');
 if (!mt) return null;
 var existing = mt.querySelector('.stg-canvas');
 if (existing) {
-if (drawing && tool !== 'mouse') existing.classList.add('stg-active');
+if (drawing && tool !== 'mouse' && tool !== 'eyedropper') existing.classList.add('stg-active');
 return existing;
 }
 var cv = document.createElement('canvas');
 cv.className = 'stg-canvas';
 cv.width = mt.clientWidth || 300;
 cv.height = mt.clientHeight || 100;
-if (drawing && tool !== 'mouse') cv.classList.add('stg-active');
+if (drawing && tool !== 'mouse' && tool !== 'eyedropper') cv.classList.add('stg-active');
 mt.appendChild(cv);
 bindCanvas(cv);
 return cv;
@@ -1618,15 +1705,8 @@ ctx.lineWidth = stroke.size;
 
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
-if (!drawing || tool === 'mouse') return;
+if (!drawing || tool === 'mouse' || tool === 'eyedropper') return;
 
-if (tool === 'eyedropper') {
-pickColorFromCanvas(cv, e);
-tool = 'brush';
-hilite();
-updatePointer();
-return;
-}
 if (tool === 'shape' && shapeMode) {
 e.preventDefault();
 shapeDrawing = true;
@@ -1635,34 +1715,34 @@ cv.setPointerCapture(e.pointerId);
 var pos = getPos(cv, e);
 shapeStartX = pos.x;
 shapeStartY = pos.y;
-shapePreviewCanvas = cv;
 return;
 }
+
 e.preventDefault();
 pressing = true;
 lastCanvas = cv;
 cv.setPointerCapture(e.pointerId);
-var pos2 = getPos(cv, e);
-lastX = pos2.x;
-lastY = pos2.y;
+var pos = getPos(cv, e);
+lastX = pos.x;
+lastY = pos.y;
 currentStroke = {
 tool: tool,
 brushType: brushType,
 color: penColor,
 size: getToolWidth(),
 opacity: getToolOpacity(),
-points: [{x: pos2.x / cv.width, y: pos2.y / cv.height}]
+points: [{x: pos.x / cv.width, y: pos.y / cv.height}]
 };
 var ctx = cv.getContext('2d');
 setBrush(ctx);
 ctx.beginPath();
-ctx.moveTo(pos2.x, pos2.y);
-ctx.lineTo(pos2.x + 0.5, pos2.y + 0.5);
+ctx.moveTo(pos.x, pos.y);
+ctx.lineTo(pos.x + 0.5, pos.y + 0.5);
 ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
-if (shapeDrawing && cv === shapePreviewCanvas) {
+if (shapeDrawing && cv === lastCanvas) {
 return;
 }
 if (!pressing || cv !== lastCanvas) return;
@@ -1692,11 +1772,10 @@ currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
 });
 
 cv.addEventListener('pointerup', function (e) {
-if (shapeDrawing && cv === shapePreviewCanvas) {
+if (shapeDrawing && cv === lastCanvas) {
 var pos = getPos(cv, e);
 drawShape(cv, shapeStartX, shapeStartY, pos.x, pos.y);
 shapeDrawing = false;
-shapePreviewCanvas = null;
 lastCanvas = null;
 if (cv.hasPointerCapture(e.pointerId)) {
 cv.releasePointerCapture(e.pointerId);
@@ -1721,7 +1800,6 @@ currentStroke = null;
 cv.addEventListener('pointercancel', function () {
 pressing = false;
 shapeDrawing = false;
-shapePreviewCanvas = null;
 lastCanvas = null;
 currentStroke = null;
 });
@@ -1802,25 +1880,6 @@ size: penWidth,
 opacity: penOpacity,
 points: pts
 });
-}
-}
-
-function pickColorFromCanvas(cv, e) {
-var pos = getPos(cv, e);
-var ctx = cv.getContext('2d');
-try {
-var px = Math.max(0, Math.min(Math.floor(pos.x), cv.width - 1));
-var py = Math.max(0, Math.min(Math.floor(pos.y), cv.height - 1));
-var pixel = ctx.getImageData(px, py, 1, 1).data;
-if (pixel[3] < 10) {
-toast('该位置无涂鸦颜色');
-return;
-}
-var hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
-applyColor(hex);
-} catch (err) {
-toast('取色失败');
-console.warn('[STG] eyedropper error:', err);
 }
 }
 
