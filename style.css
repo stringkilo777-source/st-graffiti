@@ -87,17 +87,110 @@
 .stg-sep {
   width: 26px;
   height: 1px;
-  background: rgba(255,255,255,0.1);
-  margin: 2px auto;
+  background: rgba(255,255,255,0.1);margin: 2px auto;
 }
 
-#stg-color-dot {
-  width: 20px;
-  height: 20px;
+/*===== 颜色按钮里的小圆点 ===== */
+.stg-color-dot {
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  border: 2px solid #555;
+  border: 2px solid rgba(255,255,255,0.4);
+  box-sizing: border-box;
 }
 
+/* ===== 调色板面板 ===== */
+#stg-palette {
+  position: fixed;
+  left: 52px;
+  top: 50%;
+  transform: translateY(-50%) scale(0.8);
+  background: rgba(30,30,30,0.95);
+  border-radius: 16px;
+  border: 1px solid rgba(255,133,157,0.25);
+  padding: 14px;
+  z-index: 2000001;
+  box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#stg-palette.stg-show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+
+.stg-palette-title {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+  text-align: center;
+  user-select: none;
+}
+
+/*色环：3行4列网格 */
+.stg-hue-ring {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.stg-hue-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stg-hue-dot:active {
+  transform: scale(0.88);
+}
+
+.stg-hue-dot.stg-selected {
+  border-color: #fff;
+  transform: scale(1.1);
+}
+
+/* 明暗方块区*/
+.stg-shade-label {
+  font-size: 10px;
+  color: #666;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+.stg-shade-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.stg-shade-cell {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stg-shade-cell:active {
+  transform: scale(0.88);
+}
+
+.stg-shade-cell.stg-selected {
+  border-color: #fff;
+  transform: scale(1.1);
+}
+
+/*===== Toast===== */
 #stg-toast {
   position: fixed;
   top: 60px;
@@ -112,40 +205,10 @@
   z-index: 2000002;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  white-space: nowrap;
+  transition: opacity 0.3s ease, transform 0.3s ease;white-space: nowrap;
 }
 
 #stg-toast.stg-show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
-}
-
-#stg-color-popup {
-  position: fixed;
-  background: rgba(30,30,30,0.95);
-  border-radius: 14px;
-  border: 1px solid rgba(255,133,157,0.2);
-  padding: 14px;
-  z-index: 2000001;
-  box-shadow: 4px 4px 20px rgba(0,0,0,0.5);
-  display: none;
-}
-
-#stg-color-popup.stg-show {
-  display: block;
-}
-
-#stg-picker {
-  display: block;
-  margin: 0 auto;
-  touch-action: none;
-}
-
-#stg-swatch {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 2px solid #555;
-  margin: 10px auto 0 auto;
 }
