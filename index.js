@@ -580,6 +580,8 @@ ui.style.position = 'fixed';
 ui.style.pointerEvents = 'none';
 ui.style.zIndex = '10000000';
 ui.style.display = 'none';
+ui.style.left = '0';
+ui.style.top = '0';
 
 var magnifier = document.createElement('div');
 magnifier.id = 'stg-magnifier';
@@ -590,7 +592,7 @@ magnifier.style.border = '3px solid white';
 magnifier.style.borderRadius = '50%';
 magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 12px rgba(0,0,0,0.5)';
 magnifier.style.overflow = 'hidden';
-magnifier.style.transform = 'translate(-50%, -50%)';
+magnifier.style.transform = 'translate(-50%, -120%)';
 ui.appendChild(magnifier);
 
 var magCanvas = document.createElement('canvas');
@@ -617,7 +619,7 @@ magnifier.appendChild(crosshair);
 var colorPreview = document.createElement('div');
 colorPreview.id = 'stg-color-preview';
 colorPreview.style.position = 'absolute';
-colorPreview.style.bottom = '-40px';
+colorPreview.style.top = '110px';
 colorPreview.style.left = '50%';
 colorPreview.style.transform = 'translateX(-50%)';
 colorPreview.style.width = '60px';
@@ -634,7 +636,7 @@ function activateEyedropper() {
 tool = 'eyedropper';
 hilite();
 updatePointer();
-toast('取色器已激活');
+toast('取色器已激活，点击取色');
 
 capturePageScreenshot(function() {
 var ui = document.getElementById('stg-eyedropper-ui');
@@ -1820,6 +1822,8 @@ shapePreviewLayer.height = cv.height;
 shapePreviewLayer.style.position = 'absolute';
 shapePreviewLayer.style.top = '0';
 shapePreviewLayer.style.left = '0';
+shapePreviewLayer.style.width = '100%';
+shapePreviewLayer.style.height = '100%';
 shapePreviewLayer.style.pointerEvents = 'none';
 shapePreviewLayer.style.zIndex = '15';
 cv.parentNode.appendChild(shapePreviewLayer);
