@@ -5,6 +5,7 @@
   var MAX_GRAFFITI = 10;
   var FAB_SIZE = 46;
   var FAB_HIDE = 16;
+  var SNAP_ZONE = 40;
   var initDone = false;
 
   function getCtx() {
@@ -135,7 +136,8 @@
     if (fab) {
       fab.style.transition = 'left 0.3s ease, top 0.3s ease';
       fab.style.left = pos.left + 'px';
-      fab.style.top = pos.top + 'px';fab.style.display = 'flex';
+      fab.style.top = pos.top + 'px';
+      fab.style.display = 'flex';
       setTimeout(function () {
         fab.style.transition = 'left 0.3s ease';}, 400);
     }
@@ -177,24 +179,25 @@
         nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
         nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
         fab.style.left = nl + 'px';
-        fab.style.top = nt + 'px';
-      }
+        fab.style.top = nt + 'px';}
     });
 
     fab.addEventListener('pointerup', function () {
       fab.style.transition = 'left 0.3s ease';
       if (fabDragged) {
         var currentL = parseInt(fab.style.left) || 0;
-        var centerX = currentL + FAB_SIZE / 2;
-        var snapL;
-        if (centerX < window.innerWidth / 2) {
-          snapL = -FAB_HIDE;
-        } else {
-          snapL = window.innerWidth - FAB_SIZE + FAB_HIDE;
+        var finalL = currentL;
+
+        // only snap if near edge
+        if (currentL < SNAP_ZONE) {
+          finalL = -FAB_HIDE;
+        } else if (currentL > window.innerWidth - FAB_SIZE - SNAP_ZONE) {
+          finalL = window.innerWidth - FAB_SIZE + FAB_HIDE;
         }
-        fab.style.left = snapL + 'px';
+
+        fab.style.left = finalL + 'px';
         var finalTop = parseInt(fab.style.top) || 0;
-        saveFabPos(snapL, finalTop);
+        saveFabPos(finalL, finalTop);
       }
     });
 
@@ -470,14 +473,14 @@
     }
 
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
+    ctx.globalAlpha = 1;}
 
   function clearAll() {
     var all = document.querySelectorAll('.stg-canvas');
     for (var i = 0; i < all.length; i++) {
       var ctx = all[i].getContext('2d');
-      ctx.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
+      ctx.clearRect(0, 0, all[i].width, all[i].height);
+      var mid = getMesId(all[i]);
       if (mid !== null && graffitiStore[mid]) {
         graffitiStore[mid].strokes = [];
       }
