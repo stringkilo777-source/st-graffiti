@@ -984,20 +984,24 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 function enterDraw() {
+console.log('[STG] enterDraw() called');
 drawing = true;
 tool = 'brush';
+console.log('[STG] drawing=' + drawing + ', tool=' + tool);
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.add('stg-show');
 hilite();
 var msgs = document.querySelectorAll('#chat .mes');
+console.log('[STG] found ' + msgs.length + ' messages');
 for (var i = 0; i < msgs.length; i++) {
 setupCanvas(msgs[i]);
 }
 }
 
 function exitDraw() {
+console.log('[STG] exitDraw() called');
 drawing = false;
 pressing = false;
 lastCanvas = null;
@@ -1016,6 +1020,7 @@ all[i].classList.remove('stg-active');
 }
 
 function onTool(act) {
+console.log('[STG] onTool(' + act + ') called, current tool=' + tool);
 if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
@@ -1033,6 +1038,7 @@ return;
 }
 if (act === 'brush') {
 tool = 'brush';
+console.log('[STG] tool set to brush');
 hilite();
 updatePointer();
 var pp2 = document.getElementById('stg-palette');
@@ -1041,6 +1047,7 @@ toggleBrushSettings();
 return;
 }
 tool = act;
+console.log('[STG] tool set to ' + act);
 hilite();
 updatePointer();
 hideBrushSettings();
@@ -1062,11 +1069,14 @@ btns[i].classList.remove('stg-on');
 
 function updatePointer() {
 var all = document.querySelectorAll('.stg-canvas');
+console.log('[STG] updatePointer: tool=' + tool + ', drawing=' + drawing + ', canvas count=' + all.length);
 for (var i = 0; i < all.length; i++) {
 if (tool === 'mouse' || !drawing) {
 all[i].classList.remove('stg-active');
+console.log('[STG] canvas ' + i + ' remove active');
 } else {
 all[i].classList.add('stg-active');
+console.log('[STG] canvas ' + i + ' add active');
 }
 }
 }
@@ -1086,6 +1096,7 @@ cv.height = mt.clientHeight || 100;
 if (drawing && tool !== 'mouse') cv.classList.add('stg-active');
 mt.appendChild(cv);
 bindCanvas(cv);
+console.log('[STG] created new canvas, active=' + (drawing && tool !== 'mouse'));
 return cv;
 }
 
@@ -1145,7 +1156,11 @@ ctx.lineWidth = stroke.size;
 
 function bindCanvas(cv) {
 cv.addEventListener('pointerdown', function (e) {
-if (!drawing || tool === 'mouse') return;
+console.log('[STG] pointerdown: drawing=' + drawing + ', tool=' + tool);
+if (!drawing || tool === 'mouse') {
+console.log('[STG] pointerdown ignored');
+return;
+}
 e.preventDefault();
 pressing = true;
 lastCanvas = cv;
@@ -1167,6 +1182,7 @@ ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
 ctx.lineTo(pos.x +0.5, pos.y + 0.5);
 ctx.stroke();
+console.log('[STG] stroke started');
 });
 
 cv.addEventListener('pointermove', function (e) {
@@ -1204,6 +1220,7 @@ if (!graffitiStore[mid]) {
 graffitiStore[mid] = {strokes: []};
 }
 graffitiStore[mid].strokes.push(currentStroke);
+console.log('[STG] stroke saved, total points: ' + currentStroke.points.length);
 }
 }
 pressing = false;
