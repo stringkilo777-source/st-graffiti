@@ -49,9 +49,13 @@ var drawing = false;
 var tool = 'brush';
 var brushType = 'normal';
 var penColor = '#ff0000';
-var penWidth = 3;
-var highlighterWidth = 18;
-var eraserWidth = 16;
+
+var toolConfig = {
+normal: {size: 3, opacity: 100},
+highlighter: {size: 18, opacity: 30},
+eraser: {size: 16, opacity: 100}
+};
+
 var pressing = false;
 var lastCanvas = null;
 var currentStroke = null;
@@ -345,9 +349,10 @@ panel.style.border = '2px solid rgba(255,133,157,0.4)';
 panel.style.padding = '12px';
 panel.style.zIndex = '9999999';
 panel.style.display = 'none';
+panel.style.minWidth = '180px';
 
 var title = document.createElement('div');
-title.textContent = '画笔类型';
+title.textContent = '画笔';
 title.style.fontSize = '11px';
 title.style.color = '#888';
 title.style.marginBottom = '8px';
@@ -400,6 +405,22 @@ item.appendChild(name);
 panel.appendChild(item);
 }
 
+var sep = document.createElement('div');
+sep.style.height = '1px';
+sep.style.background = 'rgba(255,255,255,0.1)';
+sep.style.margin = '8px 0';
+panel.appendChild(sep);
+
+var sizeRow = makeToolSlider('画笔大小', 1, 50, getCurrentSize(), function (v) {
+setCurrentSize(v);
+});
+panel.appendChild(sizeRow);
+
+var opacityRow = makeToolSlider('不透明度', 0, 100, getCurrentOpacity(), function (v) {
+setCurrentOpacity(v);
+});
+panel.appendChild(opacityRow);
+
 document.body.appendChild(panel);
 
 panel.addEventListener('pointerdown', function (e) {
@@ -420,9 +441,107 @@ if (!item) return;
 var bid = item.getAttribute('data-brush');
 brushType = bid;
 updateBrushHighlight();
-hideBrushPanel();
+updateBrushSliders();
 toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
 });
+}
+
+function makeToolSlider(label, min, max, val, onChange) {
+var row = document.createElement('div');
+row.style.marginBottom = '8px';
+
+var lbl = document.createElement('div');
+lbl.textContent = label;
+lbl.style.fontSize = '10px';
+lbl.style.color = '#888';
+lbl.style.marginBottom = '4px';
+lbl.style.userSelect = 'none';
+row.appendChild(lbl);
+
+var sliderRow = document.createElement('div');
+sliderRow.style.display = 'flex';
+sliderRow.style.alignItems = 'center';
+sliderRow.style.gap = '8px';
+
+var slider = document.createElement('input');
+slider.type = 'range';
+slider.min = min;
+slider.max = max;
+slider.value = val;
+slider.style.flex = '1';
+slider.style.height = '4px';
+slider.style.cursor = 'pointer';
+slider.setAttribute('data-slider-type', label);
+sliderRow.appendChild(slider);
+
+var valTxt = document.createElement('div');
+valTxt.textContent = label === '不透明度' ? Math.round(val) + '%' : Math.round(val);
+valTxt.style.fontSize = '11px';
+valTxt.style.color = '#ccc';
+valTxt.style.width = '32px';
+valTxt.style.textAlign = 'right';
+valTxt.style.userSelect = 'none';
+sliderRow.appendChild(valTxt);
+
+row.appendChild(sliderRow);
+
+slider.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+
+slider.addEventListener('input', function (e) {
+e.stopPropagation();
+var v = parseFloat(slider.value);
+valTxt.textContent = label === '不透明度' ? Math.round(v) + '%' : Math.round(v);
+onChange(v);
+});
+
+slider.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+
+slider.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+});
+
+return row;
+}
+
+function getCurrentToolKey() {
+if (tool === 'eraser') return 'eraser';
+return brushType;
+}
+
+function getCurrentSize() {
+return toolConfig[getCurrentToolKey()].size;
+}
+
+function getCurrentOpacity() {
+return toolConfig[getCurrentToolKey()].opacity;
+}
+
+function setCurrentSize(v) {
+toolConfig[getCurrentToolKey()].size = v;
+}
+
+function setCurrentOpacity(v) {
+toolConfig[getCurrentToolKey()].opacity = v;
+}
+
+function updateBrushSliders() {
+var sliders = document.querySelectorAll('[data-slider-type]');
+for (var i = 0; i < sliders.length; i++) {
+var type = sliders[i].getAttribute('data-slider-type');
+if (type === '画笔大小') {
+sliders[i].value = getCurrentSize();
+var txt = sliders[i].parentNode.querySelector('div:last-child');
+if (txt) txt.textContent = Math.round(getCurrentSize());
+} else if (type === '不透明度') {
+sliders[i].value = getCurrentOpacity();
+var txt2 = sliders[i].parentNode.querySelector('div:last-child');
+if (txt2) txt2.textContent = Math.round(getCurrentOpacity()) + '%';
+}
+}
 }
 
 function updateBrushHighlight() {
@@ -943,8 +1062,18 @@ if (bp.style.display === 'block') {
 bp.style.display = 'none';
 } else {
 bp.style.display = 'block';
+updateBrushSliders();
 }
 }
+return;
+}
+if (act === 'eraser') {
+tool = 'eraser';
+hilite();
+updatePointer();
+hideBrushPanel();
+var pp3 = document.getElementById('stg-palette');
+if (pp3) pp3.style.display = 'none';
 return;
 }
 tool = act;
@@ -998,36 +1127,33 @@ var mes = cv.closest('.mes');
 return mes ? mes.getAttribute('mesid') : null;
 }
 
-function getToolWidth() {
-if (brushType === 'highlighter') return highlighterWidth;
-if (tool === 'eraser') return eraserWidth;
-return penWidth;
-}
-
 function setBrush(ctx) {
 ctx.lineCap = 'round';
 ctx.lineJoin = 'round';
+var size = getCurrentSize();
+var opacity = getCurrentOpacity() / 100;
 if (tool === 'eraser') {
 ctx.globalCompositeOperation = 'destination-out';
 ctx.globalAlpha = 1;
 ctx.strokeStyle = 'rgba(0,0,0,1)';
-ctx.lineWidth = eraserWidth;
+ctx.lineWidth = size;
 } else if (brushType === 'highlighter') {
 ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = 0.3;
+ctx.globalAlpha = opacity;
 ctx.strokeStyle = penColor;
-ctx.lineWidth = highlighterWidth;
+ctx.lineWidth = size;
 } else {
 ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = 1;
+ctx.globalAlpha = opacity;
 ctx.strokeStyle = penColor;
-ctx.lineWidth = penWidth;
+ctx.lineWidth = size;
 }
 }
 
 function setupBrushFor(ctx, stroke) {
 ctx.lineCap = 'round';
 ctx.lineJoin = 'round';
+var opacity = (stroke.opacity !== undefined ? stroke.opacity : 100) / 100;
 if (stroke.tool === 'eraser') {
 ctx.globalCompositeOperation = 'destination-out';
 ctx.globalAlpha = 1;
@@ -1035,12 +1161,12 @@ ctx.strokeStyle = 'rgba(0,0,0,1)';
 ctx.lineWidth = stroke.size;
 } else if (stroke.brushType === 'highlighter') {
 ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = 0.3;
+ctx.globalAlpha = opacity;
 ctx.strokeStyle = stroke.color;
 ctx.lineWidth = stroke.size;
 } else {
 ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = 1;
+ctx.globalAlpha = opacity;
 ctx.strokeStyle = stroke.color;
 ctx.lineWidth = stroke.size;
 }
@@ -1060,7 +1186,8 @@ currentStroke = {
 tool: tool,
 brushType: brushType,
 color: penColor,
-size: getToolWidth(),
+size: getCurrentSize(),
+opacity: getCurrentOpacity(),
 points: [{x: pos.x / cv.width, y: pos.y / cv.height}]
 };
 var ctx = cv.getContext('2d');
@@ -1159,7 +1286,7 @@ if (mid !== null && graffitiStore[mid]) {
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
 }
 
 function saveData() {
