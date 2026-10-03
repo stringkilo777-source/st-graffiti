@@ -57,7 +57,6 @@
   var fabSL = 0;
   var fabST = 0;
 
-  //===== 调色板预设色=====
   var HUE_COLORS = [
     '#ff0000', '#ff6600', '#ffcc00', '#33cc00',
     '#00cccc', '#0066ff', '#6633ff', '#cc00cc',
@@ -65,15 +64,16 @@
   ];
 
   function startPlugin() {
-    loadData();
-    makeToast();
-    makeFab();
-    makeToolbar();
-    makePalette();
-    loadSettingsHtml();
-    restoreAll();
-    bindChatChange();
-    observeNew();console.log('[STG] ready');
+    try { loadData(); } catch (e) { console.warn('[STG] loadData error', e); }
+    try { makeToast(); } catch (e) { console.warn('[STG] makeToast error', e); }
+    try { makeFab(); } catch (e) { console.warn('[STG] makeFab error', e); }
+    try { makeToolbar(); } catch (e) { console.warn('[STG] makeToolbar error', e); }
+    try { makePalette(); } catch (e) { console.warn('[STG] makePalette error', e); }
+    try { loadSettingsHtml(); } catch (e) { console.warn('[STG] loadSettings error', e); }
+    try { restoreAll(); } catch (e) { console.warn('[STG] restoreAll error', e); }
+    try { bindChatChange(); } catch (e) { console.warn('[STG] bindChat error', e); }
+    try { observeNew(); } catch (e) { console.warn('[STG] observeNew error', e); }
+    console.log('[STG] ready');
   }
 
   function makeToast() {
@@ -93,18 +93,14 @@
   }
 
   function loadSettingsHtml() {
-    try {
-      var url = 'scripts/extensions/third-party/st-graffiti/settings.html';
-      if (typeof jQuery !== 'undefined') {
-        jQuery.get(url, function (html) {
-          jQuery('#extensions_settings2').append(html);
-          jQuery('#stg-reset-btn').on('click', function () {
-            resetFabPosition();
-          });
+    var url = 'scripts/extensions/third-party/st-graffiti/settings.html';
+    if (typeof jQuery !== 'undefined') {
+      jQuery.get(url, function (html) {
+        jQuery('#extensions_settings2').append(html);
+        jQuery('#stg-reset-btn').on('click', function () {
+          resetFabPosition();
         });
-      }
-    } catch (e) {
-      console.warn('[STG] settings load error', e);
+      });
     }
   }
 
@@ -236,89 +232,81 @@
         sep.className = 'stg-sep';
         bar.appendChild(sep);
       } else if (item.type === 'color') {
-        var btn = document.createElement('button');
-        btn.className = 'stg-btn';
-        btn.setAttribute('data-stg', 'color');
+        var cbtn = document.createElement('button');
+        cbtn.className = 'stg-btn';
+        cbtn.setAttribute('data-stg', 'color');
         var dot = document.createElement('div');
         dot.className = 'stg-color-dot';
         dot.id = 'stg-color-dot';
         dot.style.background = penColor;
-        btn.appendChild(dot);
-        bar.appendChild(btn);
+        cbtn.appendChild(dot);
+        bar.appendChild(cbtn);
       } else {
-        var btn2 = document.createElement('button');
-        btn2.className = 'stg-btn';
-        btn2.setAttribute('data-stg', item.id);
-        btn2.textContent = item.label;
-        bar.appendChild(btn2);
+        var btn = document.createElement('button');
+        btn.className = 'stg-btn';
+        btn.setAttribute('data-stg', item.id);
+        btn.textContent = item.label;
+        bar.appendChild(btn);
       }
     }
 
     document.body.appendChild(bar);
 
     bar.addEventListener('click', function (e) {
-      var t = e.target.closest('[data-stg]');
-      if (!t) return;
-      onTool(t.getAttribute('data-stg'));
+      var target = e.target.closest('[data-stg]');
+      if (!target) return;
+      onTool(target.getAttribute('data-stg'));
     });
   }
 
-  // ===== 调色板 =====
   function makePalette() {
     if (document.getElementById('stg-palette')) return;
 
     var panel = document.createElement('div');
     panel.id = 'stg-palette';
 
-    // 标题
     var title = document.createElement('div');
     title.className = 'stg-palette-title';
     title.textContent = '\u9009\u62E9\u989C\u8272';
     panel.appendChild(title);
 
-    // 色环区
     var ring = document.createElement('div');
     ring.className = 'stg-hue-ring';
     ring.id = 'stg-hue-ring';
 
     for (var i = 0; i < HUE_COLORS.length; i++) {
-      var dot = document.createElement('div');
-      dot.className = 'stg-hue-dot';
-      dot.setAttribute('data-color', HUE_COLORS[i]);
-      dot.style.background = HUE_COLORS[i];
+      var hDot = document.createElement('div');
+      hDot.className = 'stg-hue-dot';
+      hDot.setAttribute('data-color', HUE_COLORS[i]);
+      hDot.style.background = HUE_COLORS[i];
       if (HUE_COLORS[i] === penColor) {
-        dot.classList.add('stg-selected');
+        hDot.classList.add('stg-selected');
       }
-      ring.appendChild(dot);
+      ring.appendChild(hDot);
     }
     panel.appendChild(ring);
 
-    // 明暗区标题
     var shadeLabel = document.createElement('div');
     shadeLabel.className = 'stg-shade-label';
     shadeLabel.textContent = '\u660E\u6697\u53D8\u4F53';
     panel.appendChild(shadeLabel);
 
-    // 明暗方块区
     var shadeRow = document.createElement('div');
     shadeRow.className = 'stg-shade-row';
     shadeRow.id = 'stg-shade-row';
     panel.appendChild(shadeRow);
 
-    // 初始化明暗
     buildShades(penColor, shadeRow);
 
     document.body.appendChild(panel);
 
-    // 事件委托：点色环
     ring.addEventListener('click', function (e) {
-      var dot = e.target.closest('.stg-hue-dot');
-      if (!dot) return;
-      var color = dot.getAttribute('data-color');
+      var clickedDot = e.target.closest('.stg-hue-dot');
+      if (!clickedDot) return;
+      var color = clickedDot.getAttribute('data-color');
       selectHueColor(color);
     });
 
-    // 事件委托：点明暗
     shadeRow.addEventListener('click', function (e) {
       var cell = e.target.closest('.stg-shade-cell');
       if (!cell) return;
@@ -329,7 +317,6 @@
   }
 
   function selectHueColor(color) {
-    // 高亮色环
     var dots = document.querySelectorAll('#stg-hue-ring .stg-hue-dot');
     for (var i = 0; i < dots.length; i++) {
       if (dots[i].getAttribute('data-color') === color) {
@@ -337,11 +324,10 @@
       } else {
         dots[i].classList.remove('stg-selected');
       }
-    }// 重建明暗
-    var shadeRow = document.getElementById('stg-shade-row');
+    }var shadeRow = document.getElementById('stg-shade-row');
     if (shadeRow) {
       buildShades(color, shadeRow);
-    }// 应用颜色
+    }
     applyColor(color);
   }
 
@@ -373,18 +359,15 @@
 
   function applyColor(color) {
     penColor = color;
-    // 更新工具栏颜色小圆点
     var dot = document.getElementById('stg-color-dot');
     if (dot) {
       dot.style.background = color;
     }
-    // 更新悬浮球边框色
     var fab = document.getElementById('stg-fab');
     if (fab) {
       fab.style.borderColor = color;
       fab.style.color = color;
     }
-    // 更新工具栏边框色
     var bar = document.getElementById('stg-toolbar');
     if (bar) {
       bar.style.borderColor = hexToRgba(color, 0.25);
@@ -395,7 +378,6 @@
     var rgb = hexToRgb(hex);
     if (!rgb) return [hex];
     var shades = [];
-    // 5级亮 → 原色 → 5级暗，共11档
     for (var i = 5; i >= 1; i--) {
       var factor = i / 5;
       shades.push(rgbToHex(
@@ -436,7 +418,7 @@
 
   function hexToRgba(hex, alpha) {
     var rgb = hexToRgb(hex);
-    if (!rgb) return 'rgba(255,133,157,' + alpha + ')';
+    if (!rgb) return'rgba(255,133,157,' + alpha + ')';
     return 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
   }
 
@@ -554,45 +536,45 @@
     return penWidth;
   }
 
-  function setBrush(ctx2d) {
-    ctx2d.lineCap = 'round';
-    ctx2d.lineJoin = 'round';
+  function setBrush(c2d) {
+    c2d.lineCap = 'round';
+    c2d.lineJoin = 'round';
     if (tool === 'eraser') {
-      ctx2d.globalCompositeOperation = 'destination-out';
-      ctx2d.globalAlpha = 1;
-      ctx2d.strokeStyle = 'rgba(0,0,0,1)';
-      ctx2d.lineWidth = eraserWidth;
+      c2d.globalCompositeOperation = 'destination-out';
+      c2d.globalAlpha = 1;
+      c2d.strokeStyle = 'rgba(0,0,0,1)';
+      c2d.lineWidth = eraserWidth;
     } else if (tool === 'highlighter') {
-      ctx2d.globalCompositeOperation = 'source-over';
-      ctx2d.globalAlpha = 0.3;
-      ctx2d.strokeStyle = penColor;
-      ctx2d.lineWidth = highlighterWidth;
+      c2d.globalCompositeOperation = 'source-over';
+      c2d.globalAlpha = 0.3;
+      c2d.strokeStyle = penColor;
+      c2d.lineWidth = highlighterWidth;
     } else {
-      ctx2d.globalCompositeOperation = 'source-over';
-      ctx2d.globalAlpha = 1;
-      ctx2d.strokeStyle = penColor;
-      ctx2d.lineWidth = penWidth;
+      c2d.globalCompositeOperation = 'source-over';
+      c2d.globalAlpha = 1;
+      c2d.strokeStyle = penColor;
+      c2d.lineWidth = penWidth;
     }
   }
 
-  function setupBrushFor(ctx2d, stroke) {
-    ctx2d.lineCap = 'round';
-    ctx2d.lineJoin = 'round';
+  function setupBrushFor(c2d, stroke) {
+    c2d.lineCap = 'round';
+    c2d.lineJoin = 'round';
     if (stroke.tool === 'eraser') {
-      ctx2d.globalCompositeOperation = 'destination-out';
-      ctx2d.globalAlpha = 1;
-      ctx2d.strokeStyle = 'rgba(0,0,0,1)';
-      ctx2d.lineWidth = stroke.size;
+      c2d.globalCompositeOperation = 'destination-out';
+      c2d.globalAlpha = 1;
+      c2d.strokeStyle = 'rgba(0,0,0,1)';
+      c2d.lineWidth = stroke.size;
     } else if (stroke.tool === 'highlighter') {
-      ctx2d.globalCompositeOperation = 'source-over';
-      ctx2d.globalAlpha = 0.3;
-      ctx2d.strokeStyle = stroke.color;
-      ctx2d.lineWidth = stroke.size;
+      c2d.globalCompositeOperation = 'source-over';
+      c2d.globalAlpha = 0.3;
+      c2d.strokeStyle = stroke.color;
+      c2d.lineWidth = stroke.size;
     } else {
-      ctx2d.globalCompositeOperation = 'source-over';
-      ctx2d.globalAlpha = 1;
-      ctx2d.strokeStyle = stroke.color;
-      ctx2d.lineWidth = stroke.size;
+      c2d.globalCompositeOperation = 'source-over';
+      c2d.globalAlpha = 1;
+      c2d.strokeStyle = stroke.color;
+      c2d.lineWidth = stroke.size;
     }
   }
 
@@ -610,24 +592,23 @@
         size: getToolWidth(),
         points: [{ x: pos.x / cv.width, y: pos.y / cv.height }]
       };
-      var ctx2d = cv.getContext('2d');
-      setBrush(ctx2d);
-      ctx2d.beginPath();
-      ctx2d.moveTo(pos.x, pos.y);
-      ctx2d.lineTo(pos.x +0.5, pos.y + 0.5);
-      ctx2d.stroke();
+      var c2d = cv.getContext('2d');
+      setBrush(c2d);
+      c2d.beginPath();
+      c2d.moveTo(pos.x, pos.y);c2d.lineTo(pos.x + 0.5, pos.y + 0.5);
+      c2d.stroke();
     });
 
     cv.addEventListener('pointermove', function (e) {
       if (!pressing || cv !== lastCanvas) return;
       e.preventDefault();
       var pos = getPos(cv, e);
-      var ctx2d = cv.getContext('2d');
-      setBrush(ctx2d);
-      ctx2d.lineTo(pos.x, pos.y);
-      ctx2d.stroke();
-      ctx2d.beginPath();
-      ctx2d.moveTo(pos.x, pos.y);
+      var c2d = cv.getContext('2d');
+      setBrush(c2d);
+      c2d.lineTo(pos.x, pos.y);
+      c2d.stroke();
+      c2d.beginPath();
+      c2d.moveTo(pos.x, pos.y);
       if (currentStroke) {
         currentStroke.points.push({ x: pos.x / cv.width, y: pos.y / cv.height });
       }
@@ -664,37 +645,163 @@
   }
 
   function redrawCanvas(cv, data) {
-    var ctx2d = cv.getContext('2d');
-    ctx2d.clearRect(0, 0, cv.width, cv.height);
+    var c2d = cv.getContext('2d');
+    c2d.clearRect(0, 0, cv.width, cv.height);
     var w = cv.width;
     var h = cv.height;
     for (var s = 0; s < data.strokes.length; s++) {
       var stroke = data.strokes[s];
       if (!stroke.points || stroke.points.length < 1) continue;
-      setupBrushFor(ctx2d, stroke);
-      ctx2d.beginPath();
+      setupBrushFor(c2d, stroke);
+      c2d.beginPath();
       var first = stroke.points[0];
-      ctx2d.moveTo(first.x * w, first.y * h);
+      c2d.moveTo(first.x * w, first.y * h);
       for (var p = 1; p < stroke.points.length; p++) {
-        ctx2d.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
+        c2d.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
       }
-      ctx2d.stroke();
-    }
-    ctx2d.globalCompositeOperation = 'source-over';
-    ctx2d.globalAlpha = 1;
+      c2d.stroke();
+    }c2d.globalCompositeOperation = 'source-over';
+    c2d.globalAlpha = 1;
   }
 
   function clearAll() {
     var all = document.querySelectorAll('.stg-canvas');
     for (var i = 0; i < all.length; i++) {
-      var ctx2d = all[i].getContext('2d');
-      ctx2d.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
+      var c2d = all[i].getContext('2d');
+      c2d.clearRect(0, 0, all[i].width, all[i].height);var mid = getMesId(all[i]);
       if (mid !== null && graffitiStore[mid]) {
-        graffitiStore[mid].strokes = [];
+   graffitiStore[mid].strokes = [];
       }
     }
     toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
   }
 
   function saveData() {
-    var keys = Object.key
+    var keys = Object.keys(graffitiStore);
+    for (var i = 0; i < keys.length; i++) {
+      var d = graffitiStore[keys[i]];
+      if (!d.strokes || d.strokes.length === 0) {
+        delete graffitiStore[keys[i]];
+      }
+    }
+
+    var count = Object.keys(graffitiStore).length;
+    if (count > MAX_GRAFFITI) {
+      toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI +') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
+      return;
+    }
+
+    try {
+      var c = getCtx();
+      if (c && c.chatMetadata) {
+        if (!c.chatMetadata.extensions) {
+          c.chatMetadata.extensions = {};
+        }
+        c.chatMetadata.extensions[PLUGIN_ID] = JSON.parse(JSON.stringify(graffitiStore));
+        try { if (c.saveChat) c.saveChat(); } catch (e) {}try { if (window.saveChatConditional) window.saveChatConditional(); } catch (e) {}
+        try { if (window.saveChat) window.saveChat(); } catch (e) {}
+        try { if (c.saveMetadata) c.saveMetadata(); } catch (e) {}
+        try { if (window.saveMetadataDebounced) window.saveMetadataDebounced(); } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('[STG] save error', e);
+    }
+
+    try {
+      var cid = getChatId();
+      if (cid) {
+        localStorage.setItem('stg_' + cid, JSON.stringify(graffitiStore));
+      }
+    } catch (e) {}
+
+    toast('\u5DF2\u4FDD\u5B58\uFF01(' + count + '/' + MAX_GRAFFITI + ')');
+  }
+
+  function loadData() {
+    graffitiStore = {};
+    try {
+      var c = getCtx();
+      if (c && c.chatMetadata && c.chatMetadata.extensions && c.chatMetadata.extensions[PLUGIN_ID]) {
+        graffitiStore = JSON.parse(JSON.stringify(c.chatMetadata.extensions[PLUGIN_ID]));
+        return;
+      }
+    } catch (e) {}
+
+    try {
+      var cid = getChatId();
+      if (cid) {
+        var raw = localStorage.getItem('stg_' + cid);
+        if (raw) {
+          graffitiStore = JSON.parse(raw);
+        }
+      }
+    } catch (e) {}
+  }
+
+  function getChatId() {
+    try {
+      var c = getCtx();
+      if (c && c.chatId) return String(c.chatId);
+      if (c && c.characters && c.activeCharacter !== undefined) {
+        return 'char_' + c.activeCharacter;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function restoreAll() {
+    var keys = Object.keys(graffitiStore);
+    for (var i = 0; i < keys.length; i++) {
+      var mid = keys[i];
+      var mes = document.querySelector('#chat .mes[mesid="' + mid + '"]');
+      if (!mes) continue;
+      var cv = setupCanvas(mes);
+      if (!cv) continue;
+      redrawCanvas(cv, graffitiStore[mid]);
+    }
+  }
+
+  function bindChatChange() {
+    var c = getCtx();
+    if (c && c.eventSource && c.event_types) {
+      var evt = c.event_types.CHAT_CHANGED || c.event_types.CHATLOADED;
+      if (evt) {
+        c.eventSource.on(evt, function () {
+          exitDraw();
+          loadData();
+          restoreAll();
+        });
+      }
+    }
+  }
+
+  function observeNew() {
+    var chat = document.getElementById('chat');
+    if (!chat) return;
+    var obs = new MutationObserver(function (muts) {
+      for (var m = 0; m < muts.length; m++) {
+        var added = muts[m].addedNodes;
+        for (var n = 0; n < added.length; n++) {
+          var node = added[n];
+          if (node.nodeType !== 1) continue;
+          var mes = null;
+          if (node.classList && node.classList.contains('mes')) {
+            mes = node;
+          } else if (node.querySelector) {
+            mes = node.querySelector('.mes');
+          }
+          if (!mes) continue;
+          var mid = mes.getAttribute('mesid');
+          if (mid && graffitiStore[mid]) {
+            var cv = setupCanvas(mes);
+            if (cv) redrawCanvas(cv, graffitiStore[mid]);
+          } else if (drawing) {
+            setupCanvas(mes);
+          }
+        }
+      }
+    });
+    obs.observe(chat, { childList: true, subtree: true });
+  }
+
+})();
