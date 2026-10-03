@@ -99,7 +99,6 @@ var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
 var brushSettingsTab = 'brushes';
-var shapeMode = null;
 
 function startPlugin() {
 loadData();
@@ -1460,7 +1459,7 @@ if (mid !== null && currentStroke.points.length > 0) {
 if (!graffitiStore[mid]) {
 graffitiStore[mid] = {strokes: []};
 }
-pushHistory(mid);
+saveHistory(mid);
 graffitiStore[mid].strokes.push(currentStroke);
 }
 }
@@ -1476,7 +1475,7 @@ currentStroke = null;
 });
 }
 
-function pushHistory(mid) {
+function saveHistory(mid) {
 if (!historyStacks[mid]) historyStacks[mid] = [];
 if (!redoStacks[mid]) redoStacks[mid] = [];
 var snapshot = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
@@ -1511,7 +1510,7 @@ toast('没有可恢复的操作');
 return;
 }
 var next = redoStacks[mid].pop();
-pushHistory(mid);
+saveHistory(mid);
 graffitiStore[mid].strokes = next;
 redrawCurrentCanvas();
 toast('已恢复');
@@ -1568,7 +1567,7 @@ var ctx = all[i].getContext('2d');
 ctx.clearRect(0, 0, all[i].width, all[i].height);
 var mid = getMesId(all[i]);
 if (mid !== null && graffitiStore[mid]) {
-pushHistory(mid);
+saveHistory(mid);
 graffitiStore[mid].strokes = [];
 }
 }
