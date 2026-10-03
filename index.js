@@ -46,7 +46,7 @@ _c.eventSource.on(_c.event_types.APP_READY, fire);
 } catch (e) {}
 
 var drawing = false;
-var tool = 'pen';
+var tool = 'brush';
 var brushType = 'normal';
 var penColor = '#ff0000';
 var penWidth = 3;
@@ -278,7 +278,7 @@ bar.id = 'stg-toolbar';
 var items = [
 {id: 'mouse', label: '\uD83D\uDDB1'},
 {id: 'sep1', sep: true},
-{id: 'pen', label: '\uD83D\uDD8C', isBrush: true},
+{id: 'brush', label: '\uD83D\uDD8C'},
 {id: 'eraser', label: '\u2B55'},
 {id: 'sep2', sep: true},
 {id: 'color', isColor: true},
@@ -297,9 +297,6 @@ bar.appendChild(sep);
 var btn = document.createElement('button');
 btn.className = 'stg-btn';
 btn.setAttribute('data-stg', item.id);
-if (item.isBrush) {
-btn.setAttribute('data-brush-trigger', 'true');
-}
 if (item.isColor) {
 btn.id = 'stg-color-btn';
 var colorBox = document.createElement('div');
@@ -323,12 +320,7 @@ document.body.appendChild(bar);
 bar.addEventListener('click', function (e) {
 var tgt = e.target.closest('[data-stg]');
 if (!tgt) return;
-var act = tgt.getAttribute('data-stg');
-if (tgt.hasAttribute('data-brush-trigger')) {
-toggleBrushPanel();
-} else {
-onTool(act);
-}
+onTool(tgt.getAttribute('data-stg'));
 });
 }
 
@@ -355,7 +347,7 @@ panel.style.zIndex = '9999999';
 panel.style.display = 'none';
 
 var title = document.createElement('div');
-title.textContent = '画笔';
+title.textContent = '画笔类型';
 title.style.fontSize = '11px';
 title.style.color = '#888';
 title.style.marginBottom = '8px';
@@ -427,10 +419,7 @@ var item = e.target.closest('[data-brush]');
 if (!item) return;
 var bid = item.getAttribute('data-brush');
 brushType = bid;
-tool = 'pen';
 updateBrushHighlight();
-updatePointer();
-hilite();
 hideBrushPanel();
 toast('已切换到: ' + (bid === 'normal' ? '画笔' : '荧光笔'));
 });
@@ -444,20 +433,6 @@ if (bid === brushType) {
 items[i].style.borderColor = '#ff859d';
 } else {
 items[i].style.borderColor = 'transparent';
-}
-}
-}
-
-function toggleBrushPanel() {
-var pp = document.getElementById('stg-palette');
-if (pp) pp.style.display = 'none';
-var bp = document.getElementById('stg-brush-panel');
-if (bp) {
-if (bp.style.display === 'block') {
-bp.style.display = 'none';
-} else {
-bp.style.display = 'block';
-toast('选择画笔');
 }
 }
 }
@@ -908,7 +883,7 @@ return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 
 function enterDraw() {
 drawing = true;
-tool = 'pen';
+tool = 'brush';
 var fab = document.getElementById('stg-fab');
 if (fab) fab.style.display = 'none';
 var bar = document.getElementById('stg-toolbar');
@@ -956,10 +931,23 @@ toast('调色板已打开');
 }
 return;
 }
-tool = act;
-hideBrushPanel();
+if (act === 'brush') {
+tool = 'brush';
+hilite();
+updatePointer();
 var pp2 = document.getElementById('stg-palette');
 if (pp2) pp2.style.display = 'none';
+var bp = document.getElementById('stg-brush-panel');
+if (bp) {
+if (bp.style.display === 'block') {
+bp.style.display = 'none';
+} else {
+bp.style.display = 'block';
+}
+}
+return;
+}
+tool = act;
 hilite();
 updatePointer();
 }
@@ -968,7 +956,7 @@ function hilite() {
 var btns = document.querySelectorAll('.stg-btn');
 for (var i = 0; i < btns.length; i++) {
 var id = btns[i].getAttribute('data-stg');
-if (id === tool || (id === 'pen' && tool === 'pen')) {
+if (id === tool) {
 btns[i].classList.add('stg-on');
 } else {
 btns[i].classList.remove('stg-on');
