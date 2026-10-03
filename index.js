@@ -103,6 +103,8 @@ var shapeMode = null;
 var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
+var shapePreviewCanvas = null;
+var pageScreenshot = null;
 
 function startPlugin() {
 loadData();
@@ -115,7 +117,7 @@ makeUtilityMenu();
 makeShapeToolbar();
 makePalette();
 makeBrushSettingsPanel();
-makeEyedropperCursor();
+makeEyedropperUI();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -570,40 +572,128 @@ updatePointer();
 }
 }
 
-function makeEyedropperCursor() {
-if (document.getElementById('stg-eyedropper-cursor')) return;
-var cursor = document.createElement('div');
-cursor.id = 'stg-eyedropper-cursor';
-cursor.style.position = 'fixed';
-cursor.style.width = '24px';
-cursor.style.height = '24px';
-cursor.style.borderRadius = '50%';
-cursor.style.border = '2px solid white';
-cursor.style.boxShadow = '0 0 0 1px black, 0 2px 8px rgba(0,0,0,0.5)';
-cursor.style.pointerEvents = 'none';
-cursor.style.zIndex = '10000000';
-cursor.style.display = 'none';
-cursor.style.transform = 'translate(-50%, -50%)';
-document.body.appendChild(cursor);
+function makeEyedropperUI() {
+if (document.getElementById('stg-eyedropper-ui')) return;
+var ui = document.createElement('div');
+ui.id = 'stg-eyedropper-ui';
+ui.style.position = 'fixed';
+ui.style.pointerEvents = 'none';
+ui.style.zIndex = '10000000';
+ui.style.display = 'none';
+
+var magnifier = document.createElement('div');
+magnifier.id = 'stg-magnifier';
+magnifier.style.position = 'absolute';
+magnifier.style.width = '100px';
+magnifier.style.height = '100px';
+magnifier.style.border = '3px solid white';
+magnifier.style.borderRadius = '50%';
+magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 12px rgba(0,0,0,0.5)';
+magnifier.style.overflow = 'hidden';
+magnifier.style.transform = 'translate(-50%, -50%)';
+ui.appendChild(magnifier);
+
+var magCanvas = document.createElement('canvas');
+magCanvas.id = 'stg-mag-canvas';
+magCanvas.width = 100;
+magCanvas.height = 100;
+magCanvas.style.width = '100px';
+magCanvas.style.height = '100px';
+magCanvas.style.imageRendering = 'pixelated';
+magnifier.appendChild(magCanvas);
+
+var crosshair = document.createElement('div');
+crosshair.style.position = 'absolute';
+crosshair.style.top = '50%';
+crosshair.style.left = '50%';
+crosshair.style.width = '20px';
+crosshair.style.height = '20px';
+crosshair.style.border = '2px solid white';
+crosshair.style.borderRadius = '50%';
+crosshair.style.transform = 'translate(-50%, -50%)';
+crosshair.style.boxShadow = '0 0 0 1px black';
+magnifier.appendChild(crosshair);
+
+var colorPreview = document.createElement('div');
+colorPreview.id = 'stg-color-preview';
+colorPreview.style.position = 'absolute';
+colorPreview.style.bottom = '-40px';
+colorPreview.style.left = '50%';
+colorPreview.style.transform = 'translateX(-50%)';
+colorPreview.style.width = '60px';
+colorPreview.style.height = '30px';
+colorPreview.style.borderRadius = '6px';
+colorPreview.style.border = '2px solid white';
+colorPreview.style.boxShadow = '0 0 0 1px black, 0 2px 8px rgba(0,0,0,0.4)';
+ui.appendChild(colorPreview);
+
+document.body.appendChild(ui);
 }
 
 function activateEyedropper() {
 tool = 'eyedropper';
 hilite();
 updatePointer();
-toast('取色器已激活，点击任意位置取色');
-var cursor = document.getElementById('stg-eyedropper-cursor');
-if (cursor) cursor.style.display = 'block';
+toast('取色器已激活');
 
+capturePageScreenshot(function() {
+var ui = document.getElementById('stg-eyedropper-ui');
+if (ui) ui.style.display = 'block';
 document.addEventListener('pointermove', eyedropperMove);
 document.addEventListener('pointerdown', eyedropperClick, true);
+});
 }
 
 function deactivateEyedropper() {
 document.removeEventListener('pointermove', eyedropperMove);
 document.removeEventListener('pointerdown', eyedropperClick, true);
-var cursor = document.getElementById('stg-eyedropper-cursor');
-if (cursor) cursor.style.display = 'none';
+var ui = document.getElementById('stg-eyedropper-ui');
+if (ui) ui.style.display = 'none';
+pageScreenshot = null;
+}
+
+function capturePageScreenshot(callback) {
+try {
+var cv = document.createElement('canvas');
+cv.width = window.innerWidth;
+cv.height = window.innerHeight;
+var ctx = cv.getContext('2d');
+
+var data = '<svg xmlns="http://www.w3.org/2000/svg" width="' + cv.width + '" height="' + cv.height + '">' +
+'<foreignObject width="100%" height="100%">' +
+'<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">' +
+document.documentElement.outerHTML +
+'</div></foreignObject></svg>';
+
+var img = new Image();
+var blob = new Blob([data], {type: 'image/svg+xml'});
+var url = URL.createObjectURL(blob);
+
+img.onload = function() {
+ctx.drawImage(img, 0, 0);
+pageScreenshot = cv;
+URL.revokeObjectURL(url);
+callback();
+};
+img.onerror = function() {
+URL.revokeObjectURL(url);
+ctx.fillStyle = '#1a1a1a';
+ctx.fillRect(0, 0, cv.width, cv.height);
+pageScreenshot = cv;
+callback();
+};
+img.src = url;
+} catch (e) {
+console.warn('[STG] screenshot error:', e);
+var cv2 = document.createElement('canvas');
+cv2.width = window.innerWidth;
+cv2.height = window.innerHeight;
+var ctx2 = cv2.getContext('2d');
+ctx2.fillStyle = '#1a1a1a';
+ctx2.fillRect(0, 0, cv2.width, cv2.height);
+pageScreenshot = cv2;
+callback();
+}
 }
 
 function eyedropperMove(e) {
@@ -611,11 +701,29 @@ if (tool !== 'eyedropper') {
 deactivateEyedropper();
 return;
 }
-var cursor = document.getElementById('stg-eyedropper-cursor');
-if (cursor) {
-cursor.style.left = e.clientX + 'px';
-cursor.style.top = e.clientY + 'px';
-}
+var ui = document.getElementById('stg-eyedropper-ui');
+var mag = document.getElementById('stg-magnifier');
+var preview = document.getElementById('stg-color-preview');
+if (!ui || !mag || !preview || !pageScreenshot) return;
+
+ui.style.left = e.clientX + 'px';
+ui.style.top = e.clientY + 'px';
+
+var magCanvas = document.getElementById('stg-mag-canvas');
+if (!magCanvas) return;
+var magCtx = magCanvas.getContext('2d');
+
+var zoomLevel = 5;
+var captureSize = 20;
+var sx = Math.max(0, Math.min(e.clientX - captureSize / 2, pageScreenshot.width - captureSize));
+var sy = Math.max(0, Math.min(e.clientY - captureSize / 2, pageScreenshot.height - captureSize));
+
+magCtx.clearRect(0, 0, 100, 100);
+magCtx.imageSmoothingEnabled = false;
+magCtx.drawImage(pageScreenshot, sx, sy, captureSize, captureSize, 0, 0, 100, 100);
+
+var centerColor = getPixelColor(pageScreenshot, e.clientX, e.clientY);
+preview.style.background = centerColor;
 }
 
 function eyedropperClick(e) {
@@ -623,9 +731,8 @@ if (tool !== 'eyedropper') return;
 e.preventDefault();
 e.stopPropagation();
 
-var elem = document.elementFromPoint(e.clientX, e.clientY);
-if (!elem) {
-toast('无法获取颜色');
+if (!pageScreenshot) {
+toast('取色失败');
 tool = 'brush';
 hilite();
 updatePointer();
@@ -633,34 +740,20 @@ deactivateEyedropper();
 return;
 }
 
-var color = window.getComputedStyle(elem).color;
-if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
-color = window.getComputedStyle(elem).backgroundColor;
-}
-
-if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
-var hex = rgbStringToHex(color);
-applyColor(hex);
-tool = 'brush';
-hilite();
-updatePointer();
-deactivateEyedropper();
-} else {
-toast('该位置无有效颜色');
+var color = getPixelColor(pageScreenshot, e.clientX, e.clientY);
+applyColor(color);
 tool = 'brush';
 hilite();
 updatePointer();
 deactivateEyedropper();
 }
-}
 
-function rgbStringToHex(rgb) {
-var match = rgb.match(/\d+/g);
-if (!match || match.length < 3) return '#000000';
-var r = parseInt(match[0]);
-var g = parseInt(match[1]);
-var b = parseInt(match[2]);
-return rgbToHex(r, g, b);
+function getPixelColor(canvas, x, y) {
+var ctx = canvas.getContext('2d');
+var px = Math.max(0, Math.min(Math.floor(x), canvas.width - 1));
+var py = Math.max(0, Math.min(Math.floor(y), canvas.height - 1));
+var pixel = ctx.getImageData(px, py, 1, 1).data;
+return rgbToHex(pixel[0], pixel[1], pixel[2]);
 }
 
 function updateColorIndicator() {
@@ -1704,17 +1797,33 @@ ctx.lineWidth = stroke.size;
 }
 
 function bindCanvas(cv) {
+var shapePreviewLayer = null;
+
 cv.addEventListener('pointerdown', function (e) {
 if (!drawing || tool === 'mouse' || tool === 'eyedropper') return;
 
 if (tool === 'shape' && shapeMode) {
 e.preventDefault();
 shapeDrawing = true;
+shapePreviewCanvas = cv;
 lastCanvas = cv;
 cv.setPointerCapture(e.pointerId);
 var pos = getPos(cv, e);
 shapeStartX = pos.x;
 shapeStartY = pos.y;
+
+if (!shapePreviewLayer) {
+shapePreviewLayer = document.createElement('canvas');
+shapePreviewLayer.className = 'stg-shape-preview';
+shapePreviewLayer.width = cv.width;
+shapePreviewLayer.height = cv.height;
+shapePreviewLayer.style.position = 'absolute';
+shapePreviewLayer.style.top = '0';
+shapePreviewLayer.style.left = '0';
+shapePreviewLayer.style.pointerEvents = 'none';
+shapePreviewLayer.style.zIndex = '15';
+cv.parentNode.appendChild(shapePreviewLayer);
+}
 return;
 }
 
@@ -1722,36 +1831,50 @@ e.preventDefault();
 pressing = true;
 lastCanvas = cv;
 cv.setPointerCapture(e.pointerId);
-var pos = getPos(cv, e);
-lastX = pos.x;
-lastY = pos.y;
+var pos2 = getPos(cv, e);
+lastX = pos2.x;
+lastY = pos2.y;
 currentStroke = {
 tool: tool,
 brushType: brushType,
 color: penColor,
 size: getToolWidth(),
 opacity: getToolOpacity(),
-points: [{x: pos.x / cv.width, y: pos.y / cv.height}]
+points: [{x: pos2.x / cv.width, y: pos2.y / cv.height}]
 };
 var ctx = cv.getContext('2d');
 setBrush(ctx);
 ctx.beginPath();
-ctx.moveTo(pos.x, pos.y);
-ctx.lineTo(pos.x + 0.5, pos.y + 0.5);
+ctx.moveTo(pos2.x, pos2.y);
+ctx.lineTo(pos2.x + 0.5, pos2.y + 0.5);
 ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
-if (shapeDrawing && cv === lastCanvas) {
-return;
-}
-if (!pressing || cv !== lastCanvas) return;
+if (shapeDrawing && cv === shapePreviewCanvas && shapePreviewLayer) {
 e.preventDefault();
 var pos = getPos(cv, e);
+var previewCtx = shapePreviewLayer.getContext('2d');
+previewCtx.clearRect(0, 0, shapePreviewLayer.width, shapePreviewLayer.height);
+previewCtx.globalCompositeOperation = 'source-over';
+previewCtx.globalAlpha = penOpacity * 0.7;
+previewCtx.strokeStyle = penColor;
+previewCtx.lineWidth = penWidth;
+previewCtx.lineCap = 'round';
+previewCtx.lineJoin = 'round';
+previewCtx.setLineDash([5, 5]);
+drawShapePreview(previewCtx, shapeStartX, shapeStartY, pos.x, pos.y);
+previewCtx.setLineDash([]);
+return;
+}
+
+if (!pressing || cv !== lastCanvas) return;
+e.preventDefault();
+var pos2 = getPos(cv, e);
 var ctx = cv.getContext('2d');
 setBrush(ctx);
-var dx = pos.x - lastX;
-var dy = pos.y - lastY;
+var dx = pos2.x - lastX;
+var dy = pos2.y - lastY;
 var dist = Math.sqrt(dx * dx + dy * dy);
 var steps = Math.max(1, Math.floor(dist / 2));
 for (var s = 0; s < steps; s++) {
@@ -1760,28 +1883,34 @@ var ix = lastX + dx * t;
 var iy = lastY + dy * t;
 ctx.lineTo(ix, iy);
 }
-ctx.lineTo(pos.x, pos.y);
+ctx.lineTo(pos2.x, pos2.y);
 ctx.stroke();
 ctx.beginPath();
-ctx.moveTo(pos.x, pos.y);
-lastX = pos.x;
-lastY = pos.y;
+ctx.moveTo(pos2.x, pos2.y);
+lastX = pos2.x;
+lastY = pos2.y;
 if (currentStroke) {
-currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
+currentStroke.points.push({x: pos2.x / cv.width, y: pos2.y / cv.height});
 }
 });
 
 cv.addEventListener('pointerup', function (e) {
-if (shapeDrawing && cv === lastCanvas) {
+if (shapeDrawing && cv === shapePreviewCanvas) {
+if (shapePreviewLayer) {
+shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
+shapePreviewLayer = null;
+}
 var pos = getPos(cv, e);
 drawShape(cv, shapeStartX, shapeStartY, pos.x, pos.y);
 shapeDrawing = false;
+shapePreviewCanvas = null;
 lastCanvas = null;
 if (cv.hasPointerCapture(e.pointerId)) {
 cv.releasePointerCapture(e.pointerId);
 }
 return;
 }
+
 if (pressing && currentStroke && lastCanvas) {
 var mid = getMesId(lastCanvas);
 if (mid !== null && currentStroke.points.length > 0) {
@@ -1798,11 +1927,50 @@ currentStroke = null;
 });
 
 cv.addEventListener('pointercancel', function () {
+if (shapePreviewLayer) {
+shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
+shapePreviewLayer = null;
+}
 pressing = false;
 shapeDrawing = false;
+shapePreviewCanvas = null;
 lastCanvas = null;
 currentStroke = null;
 });
+}
+
+function drawShapePreview(ctx, x1, y1, x2, y2) {
+ctx.beginPath();
+if (shapeMode === 'line') {
+ctx.moveTo(x1, y1);
+ctx.lineTo(x2, y2);
+} else if (shapeMode === 'rect') {
+ctx.rect(x1, y1, x2 - x1, y2 - y1);
+} else if (shapeMode === 'ellipse') {
+var cx = (x1 + x2) / 2;
+var cy = (y1 + y2) / 2;
+var rx = Math.abs(x2 - x1) / 2;
+var ry = Math.abs(y2 - y1) / 2;
+ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+} else if (shapeMode === 'wave' || shapeMode === 'curve') {
+var dx = x2 - x1;
+var dy = y2 - y1;
+var len = Math.sqrt(dx * dx + dy * dy);
+var steps = Math.max(10, Math.floor(len / 5));
+ctx.moveTo(x1, y1);
+for (var i = 0; i <= steps; i++) {
+var t = i / steps;
+var ix = x1 + dx * t;
+var iy = y1 + dy * t;
+var offset = Math.sin(t * Math.PI * 3) * (len / 10);
+var perpX = -dy / len;
+var perpY = dx / len;
+var px = ix + perpX * offset;
+var py = iy + perpY * offset;
+ctx.lineTo(px, py);
+}
+}
+ctx.stroke();
 }
 
 function drawShape(cv, x1, y1, x2, y2) {
