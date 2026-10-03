@@ -61,7 +61,7 @@
   var fabDragged = false;
   var fabSX = 0, fabSY = 0, fabSL = 0, fabST = 0;
   var FAB_SIZE = 46;
-  var FAB_HIDE = 26;
+  var FAB_HIDE = 22;
 
   function startPlugin() {
     loadData();
