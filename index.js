@@ -68,6 +68,7 @@ makeToast();
 makeFab();
 makeToolbar();
 makePalette();
+makeBrushPanel();
 loadSettingsHtml();
 restoreAll();
 bindChatChange();
@@ -325,6 +326,104 @@ function updateColorIndicator() {
 var indicator = document.getElementById('stg-color-indicator');
 if (indicator) {
 indicator.style.background = penColor;
+}
+}
+
+function makeBrushPanel() {
+if (document.getElementById('stg-brush-panel')) return;
+var panel = document.createElement('div');
+panel.id = 'stg-brush-panel';
+panel.style.position = 'fixed';
+panel.style.left = '60px';
+panel.style.bottom = '80px';
+panel.style.background = 'rgba(30,30,30,0.95)';
+panel.style.borderRadius = '12px';
+panel.style.border = '2px solid rgba(255,133,157,0.4)';
+panel.style.padding = '12px';
+panel.style.zIndex = '9999999';
+panel.style.display = 'none';
+panel.style.minWidth = '160px';
+
+var label = document.createElement('div');
+label.textContent = '画笔粗细';
+label.style.fontSize = '10px';
+label.style.color = '#888';
+label.style.marginBottom = '8px';
+label.style.userSelect = 'none';
+panel.appendChild(label);
+
+var sliderRow = document.createElement('div');
+sliderRow.style.display = 'flex';
+sliderRow.style.alignItems = 'center';
+sliderRow.style.gap = '8px';
+
+var slider = document.createElement('input');
+slider.type = 'range';
+slider.id = 'stg-brush-slider';
+slider.min = 1;
+slider.max = 50;
+slider.value = getToolWidth();
+slider.style.flex = '1';
+slider.style.cursor = 'pointer';
+sliderRow.appendChild(slider);
+
+var valTxt = document.createElement('div');
+valTxt.id = 'stg-brush-value';
+valTxt.textContent = getToolWidth();
+valTxt.style.fontSize = '11px';
+valTxt.style.color = '#ccc';
+valTxt.style.width = '24px';
+valTxt.style.textAlign = 'right';
+valTxt.style.userSelect = 'none';
+sliderRow.appendChild(valTxt);
+
+panel.appendChild(sliderRow);
+
+slider.addEventListener('input', function (e) {
+e.stopPropagation();
+var v = parseInt(slider.value);
+valTxt.textContent = v;
+if (tool === 'pen') {
+penWidth = v;
+} else if (tool === 'highlighter') {
+highlighterWidth = v;
+} else if (tool === 'eraser') {
+eraserWidth = v;
+}
+});
+
+slider.addEventListener('pointerdown', function (e) {
+e.stopPropagation();
+});
+slider.addEventListener('pointermove', function (e) {
+e.stopPropagation();
+});
+slider.addEventListener('pointerup', function (e) {
+e.stopPropagation();
+});
+
+document.body.appendChild(panel);
+}
+
+function toggleBrushPanel() {
+var panel = document.getElementById('stg-brush-panel');
+if (!panel) return;
+var slider = document.getElementById('stg-brush-slider');
+var valTxt = document.getElementById('stg-brush-value');
+if (panel.style.display === 'block') {
+panel.style.display = 'none';
+} else {
+var currentWidth = getToolWidth();
+if (slider) slider.value = currentWidth;
+if (valTxt) valTxt.textContent = currentWidth;
+panel.style.display = 'block';
+}
+}
+
+function hideBrushPanel() {
+var panel = document.getElementById('stg-brush-panel');
+if (panel) {
+panel.style.display = 'none';
 }
 }
 
@@ -788,6 +887,7 @@ lastCanvas = null;
 currentStroke = null;
 var pp = document.getElementById('stg-palette');
 if (pp) pp.style.display = 'none';
+hideBrushPanel();
 var bar = document.getElementById('stg-toolbar');
 if (bar) bar.classList.remove('stg-show');
 var fab = document.getElementById('stg-fab');
@@ -803,6 +903,7 @@ if (act === 'exit') { exitDraw(); return; }
 if (act === 'save') { saveData(); return; }
 if (act === 'clear') { clearAll(); return; }
 if (act === 'color') {
+hideBrushPanel();
 var pp = document.getElementById('stg-palette');
 if (pp) {
 if (pp.style.display === 'block') {
@@ -815,6 +916,16 @@ toast('调色板已打开');
 }
 return;
 }
+if (act === 'pen' || act === 'highlighter' || act === 'eraser') {
+if (tool === act) {
+toggleBrushPanel();
+return;
+} else {
+hideBrushPanel();
+}
+}
+var pp2 = document.getElementById('stg-palette');
+if (pp2) pp2.style.display = 'none';
 tool = act;
 hilite();
 updatePointer();
@@ -915,6 +1026,9 @@ ctx.lineWidth = stroke.size;
 }
 
 function bindCanvas(cv) {
+var lastX = 0;
+var lastY = 0;
+
 cv.addEventListener('pointerdown', function (e) {
 if (!drawing || tool === 'mouse') return;
 e.preventDefault();
@@ -922,6 +1036,8 @@ pressing = true;
 lastCanvas = cv;
 cv.setPointerCapture(e.pointerId);
 var pos = getPos(cv, e);
+lastX = pos.x;
+lastY = pos.y;
 currentStroke = {
 tool: tool,
 color: penColor,
@@ -932,8 +1048,6 @@ var ctx = cv.getContext('2d');
 setBrush(ctx);
 ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
-ctx.lineTo(pos.x +0.5, pos.y + 0.5);
-ctx.stroke();
 });
 
 cv.addEventListener('pointermove', function (e) {
@@ -942,10 +1056,28 @@ e.preventDefault();
 var pos = getPos(cv, e);
 var ctx = cv.getContext('2d');
 setBrush(ctx);
+
+var dx = pos.x - lastX;
+var dy = pos.y - lastY;
+var dist = Math.sqrt(dx * dx + dy * dy);
+if (dist > 2) {
+var cpx = lastX + dx * 0.5;
+var cpy = lastY + dy * 0.5;
+ctx.quadraticCurveTo(lastX, lastY, cpx, cpy);
+ctx.stroke();
+ctx.beginPath();
+ctx.moveTo(cpx, cpy);
+lastX = cpx;
+lastY = cpy;
+} else {
 ctx.lineTo(pos.x, pos.y);
 ctx.stroke();
 ctx.beginPath();
 ctx.moveTo(pos.x, pos.y);
+lastX = pos.x;
+lastY = pos.y;
+}
+
 if (currentStroke) {
 currentStroke.points.push({x: pos.x / cv.width, y: pos.y / cv.height});
 }
@@ -994,7 +1126,17 @@ ctx.beginPath();
 var first = stroke.points[0];
 ctx.moveTo(first.x * w, first.y * h);
 for (var p = 1; p < stroke.points.length; p++) {
-ctx.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
+var curr = stroke.points[p];
+if (p === 1) {
+ctx.lineTo(curr.x * w, curr.y * h);
+} else {
+var prev = stroke.points[p - 1];
+var cpx = prev.x * w;
+var cpy = prev.y * h;
+var endX = curr.x * w;
+var endY = curr.y * h;
+ctx.quadraticCurveTo(cpx, cpy, (cpx + endX) / 2, (cpy + endY) / 2);
+}
 }
 ctx.stroke();
 }
@@ -1012,7 +1154,7 @@ if (mid !== null && graffitiStore[mid]) {
 graffitiStore[mid].strokes = [];
 }
 }
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D02\u9E26');
+toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
 }
 
 function saveData() {
