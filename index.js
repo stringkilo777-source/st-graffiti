@@ -104,7 +104,6 @@ var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
 var shapePreviewCanvas = null;
-var pageScreenshot = null;
 
 function startPlugin() {
 loadData();
@@ -142,7 +141,7 @@ localStorage.setItem('stg_recent_colors', JSON.stringify(recentColors));
 }
 
 function addRecentColor(color) {
-if (!color || color === '#NaNNaNNaN') return;
+if (!color || color === '#NaNNaNNaN' || color === '#000000') return;
 var idx = recentColors.indexOf(color);
 if (idx > -1) {
 recentColors.splice(idx, 1);
@@ -580,54 +579,89 @@ ui.style.position = 'fixed';
 ui.style.pointerEvents = 'none';
 ui.style.zIndex = '10000000';
 ui.style.display = 'none';
-ui.style.left = '0';
-ui.style.top = '0';
 
 var magnifier = document.createElement('div');
 magnifier.id = 'stg-magnifier';
 magnifier.style.position = 'absolute';
-magnifier.style.width = '100px';
-magnifier.style.height = '100px';
+magnifier.style.width = '120px';
+magnifier.style.height = '120px';
 magnifier.style.border = '3px solid white';
 magnifier.style.borderRadius = '50%';
-magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 12px rgba(0,0,0,0.5)';
+magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 16px rgba(0,0,0,0.6)';
 magnifier.style.overflow = 'hidden';
-magnifier.style.transform = 'translate(-50%, -120%)';
+magnifier.style.background = '#000';
 ui.appendChild(magnifier);
 
 var magCanvas = document.createElement('canvas');
 magCanvas.id = 'stg-mag-canvas';
-magCanvas.width = 100;
-magCanvas.height = 100;
-magCanvas.style.width = '100px';
-magCanvas.style.height = '100px';
+magCanvas.width = 24;
+magCanvas.height = 24;
+magCanvas.style.width = '120px';
+magCanvas.style.height = '120px';
 magCanvas.style.imageRendering = 'pixelated';
 magnifier.appendChild(magCanvas);
 
-var crosshair = document.createElement('div');
-crosshair.style.position = 'absolute';
-crosshair.style.top = '50%';
-crosshair.style.left = '50%';
-crosshair.style.width = '20px';
-crosshair.style.height = '20px';
-crosshair.style.border = '2px solid white';
-crosshair.style.borderRadius = '50%';
-crosshair.style.transform = 'translate(-50%, -50%)';
-crosshair.style.boxShadow = '0 0 0 1px black';
-magnifier.appendChild(crosshair);
+var crosshairV = document.createElement('div');
+crosshairV.style.position = 'absolute';
+crosshairV.style.left = '50%';
+crosshairV.style.top = '0';
+crosshairV.style.width = '2px';
+crosshairV.style.height = '100%';
+crosshairV.style.background = 'white';
+crosshairV.style.transform = 'translateX(-50%)';
+crosshairV.style.boxShadow = '0 0 0 1px black';
+magnifier.appendChild(crosshairV);
+
+var crosshairH = document.createElement('div');
+crosshairH.style.position = 'absolute';
+crosshairH.style.left = '0';
+crosshairH.style.top = '50%';
+crosshairH.style.width = '100%';
+crosshairH.style.height = '2px';
+crosshairH.style.background = 'white';
+crosshairH.style.transform = 'translateY(-50%)';
+crosshairH.style.boxShadow = '0 0 0 1px black';
+magnifier.appendChild(crosshairH);
+
+var centerDot = document.createElement('div');
+centerDot.style.position = 'absolute';
+centerDot.style.left = '50%';
+centerDot.style.top = '50%';
+centerDot.style.width = '10px';
+centerDot.style.height = '10px';
+centerDot.style.border = '2px solid white';
+centerDot.style.borderRadius = '50%';
+centerDot.style.transform = 'translate(-50%, -50%)';
+centerDot.style.boxShadow = '0 0 0 1px black';
+magnifier.appendChild(centerDot);
 
 var colorPreview = document.createElement('div');
 colorPreview.id = 'stg-color-preview';
 colorPreview.style.position = 'absolute';
-colorPreview.style.top = '110px';
+colorPreview.style.bottom = '-50px';
 colorPreview.style.left = '50%';
 colorPreview.style.transform = 'translateX(-50%)';
-colorPreview.style.width = '60px';
-colorPreview.style.height = '30px';
-colorPreview.style.borderRadius = '6px';
-colorPreview.style.border = '2px solid white';
-colorPreview.style.boxShadow = '0 0 0 1px black, 0 2px 8px rgba(0,0,0,0.4)';
+colorPreview.style.width = '80px';
+colorPreview.style.height = '36px';
+colorPreview.style.borderRadius = '8px';
+colorPreview.style.border = '3px solid white';
+colorPreview.style.boxShadow = '0 0 0 2px black, 0 2px 10px rgba(0,0,0,0.5)';
 ui.appendChild(colorPreview);
+
+var colorText = document.createElement('div');
+colorText.id = 'stg-color-text';
+colorText.style.position = 'absolute';
+colorText.style.bottom = '-80px';
+colorText.style.left = '50%';
+colorText.style.transform = 'translateX(-50%)';
+colorText.style.padding = '4px 8px';
+colorText.style.background = 'rgba(0,0,0,0.8)';
+colorText.style.color = 'white';
+colorText.style.fontSize = '11px';
+colorText.style.borderRadius = '4px';
+colorText.style.whiteSpace = 'nowrap';
+colorText.style.fontFamily = 'monospace';
+ui.appendChild(colorText);
 
 document.body.appendChild(ui);
 }
@@ -636,66 +670,20 @@ function activateEyedropper() {
 tool = 'eyedropper';
 hilite();
 updatePointer();
-toast('取色器已激活，点击取色');
+toast('移动鼠标取色，点击确认');
 
-capturePageScreenshot(function() {
 var ui = document.getElementById('stg-eyedropper-ui');
 if (ui) ui.style.display = 'block';
+
 document.addEventListener('pointermove', eyedropperMove);
-document.addEventListener('pointerdown', eyedropperClick, true);
-});
+document.addEventListener('pointerdown', eyedropperClick, {capture: true});
 }
 
 function deactivateEyedropper() {
 document.removeEventListener('pointermove', eyedropperMove);
-document.removeEventListener('pointerdown', eyedropperClick, true);
+document.removeEventListener('pointerdown', eyedropperClick, {capture: true});
 var ui = document.getElementById('stg-eyedropper-ui');
 if (ui) ui.style.display = 'none';
-pageScreenshot = null;
-}
-
-function capturePageScreenshot(callback) {
-try {
-var cv = document.createElement('canvas');
-cv.width = window.innerWidth;
-cv.height = window.innerHeight;
-var ctx = cv.getContext('2d');
-
-var data = '<svg xmlns="http://www.w3.org/2000/svg" width="' + cv.width + '" height="' + cv.height + '">' +
-'<foreignObject width="100%" height="100%">' +
-'<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">' +
-document.documentElement.outerHTML +
-'</div></foreignObject></svg>';
-
-var img = new Image();
-var blob = new Blob([data], {type: 'image/svg+xml'});
-var url = URL.createObjectURL(blob);
-
-img.onload = function() {
-ctx.drawImage(img, 0, 0);
-pageScreenshot = cv;
-URL.revokeObjectURL(url);
-callback();
-};
-img.onerror = function() {
-URL.revokeObjectURL(url);
-ctx.fillStyle = '#1a1a1a';
-ctx.fillRect(0, 0, cv.width, cv.height);
-pageScreenshot = cv;
-callback();
-};
-img.src = url;
-} catch (e) {
-console.warn('[STG] screenshot error:', e);
-var cv2 = document.createElement('canvas');
-cv2.width = window.innerWidth;
-cv2.height = window.innerHeight;
-var ctx2 = cv2.getContext('2d');
-ctx2.fillStyle = '#1a1a1a';
-ctx2.fillRect(0, 0, cv2.width, cv2.height);
-pageScreenshot = cv2;
-callback();
-}
 }
 
 function eyedropperMove(e) {
@@ -703,29 +691,59 @@ if (tool !== 'eyedropper') {
 deactivateEyedropper();
 return;
 }
+
 var ui = document.getElementById('stg-eyedropper-ui');
 var mag = document.getElementById('stg-magnifier');
 var preview = document.getElementById('stg-color-preview');
-if (!ui || !mag || !preview || !pageScreenshot) return;
+var colorText = document.getElementById('stg-color-text');
+var magCanvas = document.getElementById('stg-mag-canvas');
+if (!ui || !mag || !preview || !magCanvas) return;
 
 ui.style.left = e.clientX + 'px';
-ui.style.top = e.clientY + 'px';
+ui.style.top = (e.clientY - 140) + 'px';
 
-var magCanvas = document.getElementById('stg-mag-canvas');
-if (!magCanvas) return;
+var tempCanvas = document.createElement('canvas');
+tempCanvas.width = 24;
+tempCanvas.height = 24;
+var tempCtx = tempCanvas.getContext('2d');
+
+var captureX = Math.max(0, Math.min(e.clientX - 12, window.innerWidth - 24));
+var captureY = Math.max(0, Math.min(e.clientY - 12, window.innerHeight - 24));
+
+var elements = [];
+for (var dx = 0; dx < 24; dx++) {
+for (var dy = 0; dy < 24; dy++) {
+var px = captureX + dx;
+var py = captureY + dy;
+var elem = document.elementFromPoint(px, py);
+if (elem && elem.id !== 'stg-eyedropper-ui' && !elem.closest('#stg-eyedropper-ui')) {
+var style = window.getComputedStyle(elem);
+var color = style.backgroundColor;
+if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+color = style.color;
+}
+if (!color || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
+color = 'rgb(30,30,30)';
+}
+tempCtx.fillStyle = color;
+tempCtx.fillRect(dx, dy, 1, 1);
+}
+}
+}
+
 var magCtx = magCanvas.getContext('2d');
+magCtx.clearRect(0, 0, 24, 24);
+magCtx.drawImage(tempCanvas, 0, 0);
 
-var zoomLevel = 5;
-var captureSize = 20;
-var sx = Math.max(0, Math.min(e.clientX - captureSize / 2, pageScreenshot.width - captureSize));
-var sy = Math.max(0, Math.min(e.clientY - captureSize / 2, pageScreenshot.height - captureSize));
+var centerPixel = tempCtx.getImageData(12, 12, 1, 1).data;
+var centerColor = rgbToHex(centerPixel[0], centerPixel[1], centerPixel[2]);
 
-magCtx.clearRect(0, 0, 100, 100);
-magCtx.imageSmoothingEnabled = false;
-magCtx.drawImage(pageScreenshot, sx, sy, captureSize, captureSize, 0, 0, 100, 100);
-
-var centerColor = getPixelColor(pageScreenshot, e.clientX, e.clientY);
 preview.style.background = centerColor;
+if (colorText) {
+colorText.textContent = centerColor.toUpperCase();
+}
+
+ui.setAttribute('data-current-color', centerColor);
 }
 
 function eyedropperClick(e) {
@@ -733,29 +751,20 @@ if (tool !== 'eyedropper') return;
 e.preventDefault();
 e.stopPropagation();
 
-if (!pageScreenshot) {
-toast('取色失败');
-tool = 'brush';
-hilite();
-updatePointer();
-deactivateEyedropper();
-return;
-}
+var ui = document.getElementById('stg-eyedropper-ui');
+var color = ui ? ui.getAttribute('data-current-color') : null;
 
-var color = getPixelColor(pageScreenshot, e.clientX, e.clientY);
+if (color && color !== '#000000') {
 applyColor(color);
+toast('已取色: ' + color);
+} else {
+toast('取色失败');
+}
+
 tool = 'brush';
 hilite();
 updatePointer();
 deactivateEyedropper();
-}
-
-function getPixelColor(canvas, x, y) {
-var ctx = canvas.getContext('2d');
-var px = Math.max(0, Math.min(Math.floor(x), canvas.width - 1));
-var py = Math.max(0, Math.min(Math.floor(y), canvas.height - 1));
-var pixel = ctx.getImageData(px, py, 1, 1).data;
-return rgbToHex(pixel[0], pixel[1], pixel[2]);
 }
 
 function updateColorIndicator() {
@@ -1186,7 +1195,7 @@ panel.style.overflowY = 'auto';
 var colors = [
 '#ff0000','#ff6600','#ffcc00','#33cc00',
 '#00cccc','#0066ff','#6633ff','#cc00cc',
-'#ff3366','#996633','#ffffff','#000000',
+'#ff3366','#996633','#ffffff','#888888',
 '#ff9999','#ffcc99','#99ff99','#99ccff'
 ];
 
