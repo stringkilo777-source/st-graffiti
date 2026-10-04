@@ -572,98 +572,43 @@ updatePointer();
 }
 
 function makeEyedropperUI() {
-if (document.getElementById('stg-eyedropper-ui')) return;
-var ui = document.createElement('div');
-ui.id = 'stg-eyedropper-ui';
-ui.style.position = 'fixed';
-ui.style.pointerEvents = 'none';
-ui.style.zIndex = '10000000';
-ui.style.display = 'none';
+if (document.getElementById('stg-eyedropper-cursor')) return;
+var cursor = document.createElement('div');
+cursor.id = 'stg-eyedropper-cursor';
+cursor.style.position = 'fixed';
+cursor.style.pointerEvents = 'none';
+cursor.style.zIndex = '10000000';
+cursor.style.display = 'none';
+cursor.style.width = '80px';
+cursor.style.height = '80px';
 
-var magnifier = document.createElement('div');
-magnifier.id = 'stg-magnifier';
-magnifier.style.position = 'absolute';
-magnifier.style.width = '120px';
-magnifier.style.height = '120px';
-magnifier.style.border = '3px solid white';
-magnifier.style.borderRadius = '50%';
-magnifier.style.boxShadow = '0 0 0 2px black, 0 4px 16px rgba(0,0,0,0.6)';
-magnifier.style.overflow = 'hidden';
-magnifier.style.background = '#000';
-ui.appendChild(magnifier);
+var preview = document.createElement('div');
+preview.id = 'stg-eyedropper-preview';
+preview.style.width = '100%';
+preview.style.height = '100%';
+preview.style.border = '3px solid white';
+preview.style.borderRadius = '50%';
+preview.style.boxShadow = '0 0 0 2px black, 0 4px 16px rgba(0,0,0,0.6)';
+preview.style.boxSizing = 'border-box';
+cursor.appendChild(preview);
 
-var magCanvas = document.createElement('canvas');
-magCanvas.id = 'stg-mag-canvas';
-magCanvas.width = 24;
-magCanvas.height = 24;
-magCanvas.style.width = '120px';
-magCanvas.style.height = '120px';
-magCanvas.style.imageRendering = 'pixelated';
-magnifier.appendChild(magCanvas);
+var colorLabel = document.createElement('div');
+colorLabel.id = 'stg-eyedropper-label';
+colorLabel.style.position = 'absolute';
+colorLabel.style.top = '100%';
+colorLabel.style.left = '50%';
+colorLabel.style.transform = 'translateX(-50%)';
+colorLabel.style.marginTop = '8px';
+colorLabel.style.padding = '4px 8px';
+colorLabel.style.background = 'rgba(0,0,0,0.9)';
+colorLabel.style.color = 'white';
+colorLabel.style.fontSize = '11px';
+colorLabel.style.fontFamily = 'monospace';
+colorLabel.style.borderRadius = '4px';
+colorLabel.style.whiteSpace = 'nowrap';
+cursor.appendChild(colorLabel);
 
-var crosshairV = document.createElement('div');
-crosshairV.style.position = 'absolute';
-crosshairV.style.left = '50%';
-crosshairV.style.top = '0';
-crosshairV.style.width = '2px';
-crosshairV.style.height = '100%';
-crosshairV.style.background = 'white';
-crosshairV.style.transform = 'translateX(-50%)';
-crosshairV.style.boxShadow = '0 0 0 1px black';
-magnifier.appendChild(crosshairV);
-
-var crosshairH = document.createElement('div');
-crosshairH.style.position = 'absolute';
-crosshairH.style.left = '0';
-crosshairH.style.top = '50%';
-crosshairH.style.width = '100%';
-crosshairH.style.height = '2px';
-crosshairH.style.background = 'white';
-crosshairH.style.transform = 'translateY(-50%)';
-crosshairH.style.boxShadow = '0 0 0 1px black';
-magnifier.appendChild(crosshairH);
-
-var centerDot = document.createElement('div');
-centerDot.style.position = 'absolute';
-centerDot.style.left = '50%';
-centerDot.style.top = '50%';
-centerDot.style.width = '10px';
-centerDot.style.height = '10px';
-centerDot.style.border = '2px solid white';
-centerDot.style.borderRadius = '50%';
-centerDot.style.transform = 'translate(-50%, -50%)';
-centerDot.style.boxShadow = '0 0 0 1px black';
-magnifier.appendChild(centerDot);
-
-var colorPreview = document.createElement('div');
-colorPreview.id = 'stg-color-preview';
-colorPreview.style.position = 'absolute';
-colorPreview.style.bottom = '-50px';
-colorPreview.style.left = '50%';
-colorPreview.style.transform = 'translateX(-50%)';
-colorPreview.style.width = '80px';
-colorPreview.style.height = '36px';
-colorPreview.style.borderRadius = '8px';
-colorPreview.style.border = '3px solid white';
-colorPreview.style.boxShadow = '0 0 0 2px black, 0 2px 10px rgba(0,0,0,0.5)';
-ui.appendChild(colorPreview);
-
-var colorText = document.createElement('div');
-colorText.id = 'stg-color-text';
-colorText.style.position = 'absolute';
-colorText.style.bottom = '-80px';
-colorText.style.left = '50%';
-colorText.style.transform = 'translateX(-50%)';
-colorText.style.padding = '4px 8px';
-colorText.style.background = 'rgba(0,0,0,0.8)';
-colorText.style.color = 'white';
-colorText.style.fontSize = '11px';
-colorText.style.borderRadius = '4px';
-colorText.style.whiteSpace = 'nowrap';
-colorText.style.fontFamily = 'monospace';
-ui.appendChild(colorText);
-
-document.body.appendChild(ui);
+document.body.appendChild(cursor);
 }
 
 function activateEyedropper() {
@@ -671,8 +616,8 @@ tool = 'eyedropper';
 hilite();
 toast('在涂鸦上取色，点击确认');
 
-var ui = document.getElementById('stg-eyedropper-ui');
-if (ui) ui.style.display = 'block';
+var cursor = document.getElementById('stg-eyedropper-cursor');
+if (cursor) cursor.style.display = 'block';
 
 document.addEventListener('pointermove', eyedropperMove);
 document.addEventListener('pointerdown', eyedropperClick, {capture: true});
@@ -681,8 +626,8 @@ document.addEventListener('pointerdown', eyedropperClick, {capture: true});
 function deactivateEyedropper() {
 document.removeEventListener('pointermove', eyedropperMove);
 document.removeEventListener('pointerdown', eyedropperClick, {capture: true});
-var ui = document.getElementById('stg-eyedropper-ui');
-if (ui) ui.style.display = 'none';
+var cursor = document.getElementById('stg-eyedropper-cursor');
+if (cursor) cursor.style.display = 'none';
 }
 
 function eyedropperMove(e) {
@@ -691,14 +636,13 @@ deactivateEyedropper();
 return;
 }
 
-var ui = document.getElementById('stg-eyedropper-ui');
-var preview = document.getElementById('stg-color-preview');
-var colorText = document.getElementById('stg-color-text');
-var magCanvas = document.getElementById('stg-mag-canvas');
-if (!ui || !preview || !magCanvas) return;
+var cursor = document.getElementById('stg-eyedropper-cursor');
+var preview = document.getElementById('stg-eyedropper-preview');
+var label = document.getElementById('stg-eyedropper-label');
+if (!cursor || !preview || !label) return;
 
-ui.style.left = e.clientX + 'px';
-ui.style.top = (e.clientY - 140) + 'px';
+cursor.style.left = (e.clientX - 40) + 'px';
+cursor.style.top = (e.clientY - 120) + 'px';
 
 var targetCanvas = null;
 var allCanvases = document.querySelectorAll('.stg-canvas');
@@ -713,46 +657,40 @@ break;
 
 if (!targetCanvas) {
 preview.style.background = '#333';
-if (colorText) colorText.textContent = '无涂鸦';
-ui.setAttribute('data-current-color', '');
+label.textContent = '无涂鸦';
+cursor.setAttribute('data-color', '');
 return;
 }
 
 var canvasRect = targetCanvas.getBoundingClientRect();
-var canvasX = (e.clientX - canvasRect.left) * (targetCanvas.width / canvasRect.width);
-var canvasY = (e.clientY - canvasRect.top) * (targetCanvas.height / canvasRect.height);
+var canvasX = Math.floor((e.clientX - canvasRect.left) * (targetCanvas.width / canvasRect.width));
+var canvasY = Math.floor((e.clientY - canvasRect.top) * (targetCanvas.height / canvasRect.height));
 
-var magCtx = magCanvas.getContext('2d');
-magCtx.clearRect(0, 0, 24, 24);
-
-var srcCtx = targetCanvas.getContext('2d');
-var startX = Math.max(0, Math.floor(canvasX - 12));
-var startY = Math.max(0, Math.floor(canvasY - 12));
-var endX = Math.min(targetCanvas.width, startX + 24);
-var endY = Math.min(targetCanvas.height, startY + 24);
-
-try {
-var regionData = srcCtx.getImageData(startX, startY, endX - startX, endY - startY);
-magCtx.putImageData(regionData, 0, 0);
-} catch (err) {
-console.warn('[STG] getImageData error:', err);
+if (canvasX < 0 || canvasX >= targetCanvas.width || canvasY < 0 || canvasY >= targetCanvas.height) {
+preview.style.background = '#333';
+label.textContent = '边界外';
+cursor.setAttribute('data-color', '');
+return;
 }
 
-var centerPixel = srcCtx.getImageData(
-Math.floor(canvasX),
-Math.floor(canvasY),
-1, 1
-).data;
+try {
+var srcCtx = targetCanvas.getContext('2d');
+var pixel = srcCtx.getImageData(canvasX, canvasY, 1, 1).data;
 
-if (centerPixel[3] === 0) {
+if (pixel[3] === 0) {
 preview.style.background = '#333';
-if (colorText) colorText.textContent = '透明区域';
-ui.setAttribute('data-current-color', '');
+label.textContent = '透明';
+cursor.setAttribute('data-color', '');
 } else {
-var centerColor = rgbToHex(centerPixel[0], centerPixel[1], centerPixel[2]);
-preview.style.background = centerColor;
-if (colorText) colorText.textContent = centerColor.toUpperCase();
-ui.setAttribute('data-current-color', centerColor);
+var color = rgbToHex(pixel[0], pixel[1], pixel[2]);
+preview.style.background = color;
+label.textContent = color.toUpperCase();
+cursor.setAttribute('data-color', color);
+}
+} catch (err) {
+preview.style.background = '#333';
+label.textContent = '读取失败';
+cursor.setAttribute('data-color', '');
 }
 }
 
@@ -761,10 +699,10 @@ if (tool !== 'eyedropper') return;
 e.preventDefault();
 e.stopPropagation();
 
-var ui = document.getElementById('stg-eyedropper-ui');
-var color = ui ? ui.getAttribute('data-current-color') : null;
+var cursor = document.getElementById('stg-eyedropper-cursor');
+var color = cursor ? cursor.getAttribute('data-color') : null;
 
-if (color && color !== '#000000' && color !== '') {
+if (color && color !== '' && color !== '#000000') {
 applyColor(color);
 toast('已取色: ' + color);
 } else {
