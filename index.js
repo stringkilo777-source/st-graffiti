@@ -1487,6 +1487,7 @@ function enterDraw() {
 }
 
 function exitDraw() {
+  clearWetCanvas();
   drawing = false;
   deactivateEyedropper(false);
   pressing = false;
@@ -1630,146 +1631,376 @@ function setupBrushFor(context, stroke) {
   context.lineWidth = stroke.size;
 }
 
-function bindCanvas(canvas) {
-  var shapePreviewLayer = null;
+var wetCanvas = null;
+var wetOwner = null;
+var wetPointerId = null;
 
-  function removePreview() {
-    if (shapePreviewLayer && shapePreviewLayer.parentNode) {
-      shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
+function clearWetCanvas() {
+  var owner = wetOwner;
+  var pointerId = wetPointerId;
+
+  wetOwner = null;
+  wetPointerId = null;
+
+  if (wetCanvas && wetCanvas.parentNode) {
+    wetCanvas.parentNode.removeChild(wetCanvas);
+  }
+  wetCanvas = null;
+
+  pressing = false;
+  currentStroke = null;
+  lastCanvas = null;
+  shapeDrawing = false;
+  shapePreviewCanvas = null;
+
+  if (
+    owner && pointerId !== null &&
+    typeof owner.hasPointerCapture === 'function' &&
+    owner.hasPointerCapture(pointerId)
+  ) {
+    try {
+      owner.releasePointerCapture(pointerId);
+    } catch (error) {
+      console.warn('[STG] release pointer:', error);
     }
-    shapePreviewLayer = null;
+  }
+}
+
+function createWetCanvas(canvas, opacity) {
+  wetCanvas = document.createElement('canvas');
+  wetCanvas.className = 'stg-wet-canvas';
+  wetCanvas.width = canvas.width;
+  wetCanvas.height = canvas.height;
+
+  Object.assign(wetCanvas.style, {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: '15',
+    opacity: String(opacity)
+  });
+
+  canvas.parentNode.appendChild(wetCanvas);
+}
+
+function getWetPressure(e) {
+  /*
+   * 普通手指和鼠标保持设置宽度。
+   * 触控笔才使用真实压感；pointerup 的零压力不参与计算。
+   */
+  if (e.pointerType !== 'pen') return 1;
+
+  var pressure = Number(e.pressure);
+  if (!Number.isFinite(pressure)) return 1;
+
+  return 0.2 + 0.8 * Math.max(0, Math.min(1, pressure));
+}
+
+function renderWetStroke(stroke) {
+  if (!wetCanvas || !stroke || !stroke.points.length) return;
+
+  var context = wetCanvas.getContext('2d');
+  var width = wetCanvas.width;
+  var height = wetCanvas.height;
+  var points = stroke.points;
+
+  context.clearRect(0, 0, width, height);
+  context.globalCompositeOperation = 'source-over';
+  context.globalAlpha = 1;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+
+  var color = stroke.tool === 'eraser' ? '#ffffff' : stroke.color;
+  context.strokeStyle = color;
+  context.fillStyle = color;
+
+  var first = points[0];
+  var startX = first.x * width;
+  var startY = first.y * height;
+
+  if (points.length === 1) {
+    context.beginPath();
+    context.arc(
+      startX,
+      startY,
+      stroke.size * first.pressure / 2,
+      0,
+      Math.PI * 2
+    );
+    context.fill();
+    return;
+  }
+
+  /*
+   * 每次先清空，再用不透明颜色重绘当前整笔。
+   * 分段只用于改变压感宽度，透明度统一由 wetCanvas.style.opacity 控制。
+   */
+  for (var i = 1; i < points.length; i++) {
+    var previous = points[i - 1];
+    var next = points[i];
+
+    var endX = (previous.x + next.x) * width / 2;
+    var endY = (previous.y + next.y) * height / 2;
+
+    context.lineWidth =
+      stroke.size * (previous.pressure + next.pressure) / 2;
+
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.quadraticCurveTo(
+      previous.x * width,
+      previous.y * height,
+      endX,
+      endY
+    );
+    context.stroke();
+
+    startX = endX;
+    startY = endY;
+  }
+
+  var last = points[points.length - 1];
+  context.lineWidth = stroke.size * last.pressure;
+  context.beginPath();
+  context.moveTo(startX, startY);
+  context.quadraticCurveTo(
+    last.x * width,
+    last.y * height,
+    last.x * width,
+    last.y * height
+  );
+  context.stroke();
+}
+
+function bindCanvas(canvas) {
+  var gesture = null;
+
+  function appendPoint(e, usePressure) {
+    if (!gesture || gesture.kind !== 'stroke') return;
+
+    var pos = getPos(canvas, e);
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+
+    var points = gesture.stroke.points;
+    var previous = points[points.length - 1];
+    var x = pos.x / canvas.width;
+    var y = pos.y / canvas.height;
+
+    var pressure = usePressure
+      ? getWetPressure(e)
+      : previous.pressure;
+
+    if (
+      previous.x === x &&
+      previous.y === y &&
+      previous.pressure === pressure
+    ) return;
+
+    points.push({x: x, y: y, pressure: pressure});
+  }
+
+  function renderShape(e) {
+    if (!wetCanvas || !gesture) return;
+
+    var pos = getPos(canvas, e);
+    var context = wetCanvas.getContext('2d');
+
+    context.clearRect(0, 0, wetCanvas.width, wetCanvas.height);
+    context.globalCompositeOperation = 'source-over';
+    context.globalAlpha = 1;
+    context.strokeStyle = gesture.color;
+    context.lineWidth = gesture.size;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.setLineDash([5, 5]);
+
+    strokePointPath(
+      context,
+      getShapePoints(
+        gesture.mode,
+        gesture.start.x,
+        gesture.start.y,
+        pos.x,
+        pos.y
+      )
+    );
+
+    context.setLineDash([]);
   }
 
   canvas.addEventListener('pointerdown', function (e) {
     if (!drawing || tool === 'mouse' || tool === 'eyedropper') return;
-
-    if (tool === 'shape' && shapeMode) {
-      e.preventDefault();
-      shapeDrawing = true;
-      shapePreviewCanvas = canvas;
-      lastCanvas = canvas;
-      canvas.setPointerCapture(e.pointerId);
-      var start = getPos(canvas, e);
-      shapeStartX = start.x;
-      shapeStartY = start.y;
-
-      removePreview();
-      shapePreviewLayer = styled('canvas', {
-        position: 'absolute', top: '0', left: '0',
-        width: '100%', height: '100%',
-        pointerEvents: 'none', zIndex: '15'
-      });
-      shapePreviewLayer.className = 'stg-shape-preview';
-      shapePreviewLayer.width = canvas.width;
-      shapePreviewLayer.height = canvas.height;
-      canvas.parentNode.appendChild(shapePreviewLayer);
-      return;
-    }
+    if (wetPointerId !== null) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     e.preventDefault();
-    pressing = true;
-    lastCanvas = canvas;
-    canvas.setPointerCapture(e.pointerId);
+
+    var rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
     var pos = getPos(canvas, e);
-    lastX = pos.x;
-    lastY = pos.y;
-    currentStroke = {
-      tool: tool,
-      brushType: brushType,
-      color: penColor,
-      size: getToolWidth(),
-      opacity: getToolOpacity(),
-      points: [{x: pos.x / canvas.width, y: pos.y / canvas.height}]
-    };
-    var context = canvas.getContext('2d');
-    setBrush(context);
-    context.beginPath();
-    context.moveTo(pos.x, pos.y);
-    context.lineTo(pos.x + 0.5, pos.y + 0.5);
-    context.stroke();
+
+    if (tool === 'shape' && shapeMode) {
+      gesture = {
+        kind: 'shape',
+        mode: shapeMode,
+        start: pos,
+        color: penColor,
+        size: penWidth
+      };
+
+      shapeDrawing = true;
+      shapePreviewCanvas = canvas;
+      shapeStartX = pos.x;
+      shapeStartY = pos.y;
+
+      createWetCanvas(canvas, penOpacity * 0.7);
+    } else {
+      var stroke = {
+        tool: tool,
+        brushType: brushType,
+        color: penColor,
+        size: getToolWidth(),
+        opacity: getToolOpacity(),
+        points: [{
+          x: pos.x / canvas.width,
+          y: pos.y / canvas.height,
+          pressure: getWetPressure(e)
+        }]
+      };
+
+      gesture = {kind: 'stroke', stroke: stroke};
+      pressing = true;
+      currentStroke = stroke;
+
+      createWetCanvas(
+        canvas,
+        tool === 'eraser' ? 0.35 : stroke.opacity
+      );
+      renderWetStroke(stroke);
+    }
+
+    wetOwner = canvas;
+    wetPointerId = e.pointerId;
+    lastCanvas = canvas;
+
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (error) {
+      gesture = null;
+      clearWetCanvas();
+      console.warn('[STG] capture pointer:', error);
+    }
   });
 
   canvas.addEventListener('pointermove', function (e) {
-    if (shapeDrawing && canvas === shapePreviewCanvas && shapePreviewLayer) {
-      e.preventDefault();
-      var shapePos = getPos(canvas, e);
-      var previewContext = shapePreviewLayer.getContext('2d');
-      previewContext.clearRect(0, 0, canvas.width, canvas.height);
-      previewContext.globalCompositeOperation = 'source-over';
-      previewContext.globalAlpha = penOpacity * 0.7;
-      previewContext.strokeStyle = penColor;
-      previewContext.lineWidth = penWidth;
-      previewContext.lineCap = 'round';
-      previewContext.lineJoin = 'round';
-      previewContext.setLineDash([5, 5]);
-      drawShapePreview(
-        previewContext, shapeStartX, shapeStartY, shapePos.x, shapePos.y
-      );
-      previewContext.setLineDash([]);
+    if (
+      !gesture ||
+      wetOwner !== canvas ||
+      e.pointerId !== wetPointerId
+    ) return;
+
+    e.preventDefault();
+
+    if (gesture.kind === 'shape') {
+      renderShape(e);
       return;
     }
 
-    if (!pressing || canvas !== lastCanvas) return;
-    e.preventDefault();
-    var pos = getPos(canvas, e);
-    var context = canvas.getContext('2d');
-    setBrush(context);
-    var dx = pos.x - lastX;
-    var dy = pos.y - lastY;
-    var distance = Math.sqrt(dx * dx + dy * dy);
-    var steps = Math.max(1, Math.floor(distance / 2));
-    for (var s = 0; s < steps; s++) {
-      var fraction = s / steps;
-      context.lineTo(lastX + dx * fraction, lastY + dy * fraction);
+    var samples = typeof e.getCoalescedEvents === 'function'
+      ? e.getCoalescedEvents()
+      : [];
+
+    if (samples.length) {
+      for (var i = 0; i < samples.length; i++) {
+        appendPoint(samples[i], true);
+      }
+    } else {
+      appendPoint(e, true);
     }
-    context.lineTo(pos.x, pos.y);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(pos.x, pos.y);
-    lastX = pos.x;
-    lastY = pos.y;
-    if (currentStroke) {
-      currentStroke.points.push({
-        x: pos.x / canvas.width, y: pos.y / canvas.height
-      });
-    }
+
+    renderWetStroke(gesture.stroke);
   });
 
   canvas.addEventListener('pointerup', function (e) {
-    if (shapeDrawing && canvas === shapePreviewCanvas) {
-      removePreview();
-      var pos = getPos(canvas, e);
-      drawShape(canvas, shapeStartX, shapeStartY, pos.x, pos.y);
-      shapeDrawing = false;
-      shapePreviewCanvas = null;
-      lastCanvas = null;
-      if (canvas.hasPointerCapture(e.pointerId)) {
-        canvas.releasePointerCapture(e.pointerId);
+    if (
+      !gesture ||
+      wetOwner !== canvas ||
+      e.pointerId !== wetPointerId
+    ) return;
+
+    e.preventDefault();
+
+    try {
+      if (gesture.kind === 'shape') {
+        var pos = getPos(canvas, e);
+
+        /* 使用原有形状落笔和历史记录逻辑。 */
+        drawShape(
+          canvas,
+          gesture.start.x,
+          gesture.start.y,
+          pos.x,
+          pos.y
+        );
+        return;
       }
-      return;
-    }
-    if (pressing && currentStroke && lastCanvas) {
-      var mid = getMesId(lastCanvas);
-      if (mid !== null && currentStroke.points.length > 0) {
-        if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
-        saveHistory(mid);
-        graffitiStore[mid].strokes.push(currentStroke);
-        lastEditedMid = mid;
+
+      /* 松手坐标保留上一采样点的压感，不使用松手时的零压力。 */
+      appendPoint(e, false);
+
+      var stroke = gesture.stroke;
+      var mid = getMesId(canvas);
+      if (mid === null) return;
+
+      if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
+
+      var points = stroke.points.map(function (point) {
+        return {
+          x: point.x * canvas.width,
+          y: point.y * canvas.height
+        };
+      });
+
+      var context = canvas.getContext('2d');
+
+      context.save();
+      try {
+        setupBrushFor(context, stroke);
+        context.setLineDash([]);
+
+        /* 主画布只在这里整笔绘制一次。 */
+        strokePointPath(context, points);
+      } finally {
+        context.restore();
       }
+
+      saveHistory(mid);
+      graffitiStore[mid].strokes.push(stroke);
+      lastEditedMid = mid;
+    } finally {
+      gesture = null;
+      clearWetCanvas();
     }
-    pressing = false;
-    lastCanvas = null;
-    currentStroke = null;
   });
 
-  canvas.addEventListener('pointercancel', function () {
-    removePreview();
-    pressing = false;
-    shapeDrawing = false;
-    shapePreviewCanvas = null;
-    lastCanvas = null;
-    currentStroke = null
-      });
+  function cancelGesture(e) {
+    if (
+      wetOwner !== canvas ||
+      e.pointerId !== wetPointerId
+    ) return;
+
+    gesture = null;
+
+    /* 取消时只清除预览，主画布和历史记录均不产生新笔画。 */
+    clearWetCanvas();
+  }
+
+  canvas.addEventListener('pointercancel', cancelGesture);
+  canvas.addEventListener('lostpointercapture', cancelGesture);
 }
 
 function getPos(canvas, e) {
