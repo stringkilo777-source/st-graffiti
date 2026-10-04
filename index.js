@@ -8,83 +8,60 @@ var FAB_SIZE = 46;
 var FAB_HIDE = 16;
 var SNAP_ZONE = 40;
 var initDone = false;
+
 var paletteH = 0;
 var paletteS = 1;
 var paletteV = 1;
 var recentColors = [];
+var paletteUI = null;
 
 var brushPresets = [
-{
-id: 'normal',
-name: '画笔',
-icon: null,
-author: '涂鸦插件官方',
-defaultWidth: 3,
-defaultOpacity: 1.0,
-flow: 100,
-hardness: 100,
-spacing: 10
-},
-{
-id: 'highlighter',
-name: '荧光笔',
-icon: null,
-author: '涂鸦插件官方',
-defaultWidth: 18,
-defaultOpacity: 0.3,
-flow: 100,
-hardness: 50,
-spacing: 5
-}
+  {
+    id: 'normal',
+    name: '画笔',
+    icon: null,
+    author: '涂鸦插件官方',
+    defaultWidth: 3,
+    defaultOpacity: 1,
+    flow: 100,
+    hardness: 100,
+    spacing: 10
+  },
+  {
+    id: 'highlighter',
+    name: '荧光笔',
+    icon: null,
+    author: '涂鸦插件官方',
+    defaultWidth: 18,
+    defaultOpacity: 0.3,
+    flow: 100,
+    hardness: 50,
+    spacing: 5
+  }
 ];
 
-var DEFAULT_BRUSH_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxMCIgZmlsbD0iI2ZmZmZmZiIgZmlsbC1vcGFjaXR5PSIwLjMiLz48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSI2IiBmaWxsPSIjZmZmZmZmIiBmaWxsLW9wYWNpdHk9IjAuOCIvPjwvc3ZnPg==';
-
-function getCtx() {
-try {
-if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-return SillyTavern.getContext();
-}
-} catch (e) {}
-return null;
-}
-
-function fire() {
-if (initDone) return;
-initDone = true;
-try { startPlugin(); }
-catch (err) { console.warn('[STG] init error', err); }
-}
-
-var t0 = Date.now();
-var poll = setInterval(function () {
-if (document.getElementById('chat') || Date.now() - t0 > 5000) {
-clearInterval(poll);
-fire();
-}
-}, 300);
-
-try {
-if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-var _c = SillyTavern.getContext();
-if (_c && _c.eventSource && _c.event_types && _c.event_types.APP_READY) {
-_c.eventSource.on(_c.event_types.APP_READY, fire);
-}
-}
-} catch (e) {}
+var DEFAULT_BRUSH_ICON =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+    '<circle cx="16" cy="16" r="10" fill="white" opacity=".3"/>' +
+    '<circle cx="16" cy="16" r="6" fill="white" opacity=".8"/>' +
+    '</svg>'
+  );
 
 var drawing = false;
 var tool = 'brush';
 var brushType = 'normal';
 var penColor = '#ff0000';
 var penWidth = 3;
-var penOpacity = 1.0;
-var brushFlow = 100;
-var brushHardness = 100;
-var brushSpacing = 10;
+var penOpacity = 1;
 var highlighterWidth = 18;
 var highlighterOpacity = 0.3;
 var eraserWidth = 16;
+var brushFlow = 100;
+var brushHardness = 100;
+var brushSpacing = 10;
+
 var pressing = false;
 var lastCanvas = null;
 var currentStroke = null;
@@ -93,2168 +70,2217 @@ var lastY = 0;
 var graffitiStore = {};
 var historyStacks = {};
 var redoStacks = {};
+var lastEditedMid = null;
+
 var fabDragged = false;
 var fabSX = 0;
 var fabSY = 0;
 var fabSL = 0;
 var fabST = 0;
+
 var brushSettingsTab = 'brushes';
+var brushSizeControl = null;
+var brushOpacityControl = null;
+
 var shapeMode = null;
 var shapeStartX = 0;
 var shapeStartY = 0;
 var shapeDrawing = false;
 var shapePreviewCanvas = null;
 
-function startPlugin() {
-loadData();
-loadRecentColors();
-loadBrushIcons();
-makeToast();
-makeFab();
-makeToolbar();
-makeUtilityMenu();
-makeShapeToolbar();
-makePalette();
-makeBrushSettingsPanel();
-makeEyedropperUI();
-loadSettingsHtml();
-restoreAll();
-bindChatChange();
-observeNew();
-console.log('[STG] ready');
+var toastTimer = null;
+
+/* 取色器独立状态，不复用画笔的 pressing / lastCanvas。 */
+var eyedropper = {
+  active: false,
+  pointerId: null,
+  layer: null,
+  originalColor: null,
+  previousTool: 'brush',
+  currentColor: null,
+  ui: null,
+  marker: null,
+  lens: null,
+  canvas: null,
+  label: null
+};
+
+function getCtx() {
+  try {
+    if (
+      typeof SillyTavern !== 'undefined' &&
+      typeof SillyTavern.getContext === 'function'
+    ) {
+      return SillyTavern.getContext();
+    }
+  } catch (e) {
+    console.warn('[STG] context:', e);
+  }
+  return null;
 }
+
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function styled(tag, styles, text) {
+  var element = document.createElement(tag);
+  if (styles) Object.assign(element.style, styles);
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
+function stopEvent(e) {
+  e.stopPropagation();
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function validColor(color) {
+  return typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+}
+
+function hideElement(id) {
+  var element = byId(id);
+  if (element) element.style.display = 'none';
+}
+
+function makePanel(id, width) {
+  var panel = styled('div', {
+    position: 'fixed',
+    left: '60px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'rgba(30,30,30,0.95)',
+    borderRadius: '16px',
+    border: '2px solid rgba(255,133,157,0.4)',
+    padding: '12px',
+    zIndex: '9999999',
+    display: 'none',
+    maxHeight: '80vh',
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+    maxWidth: 'calc(100vw - 68px)'
+  });
+  panel.id = id;
+  if (width) panel.style.width = width + 'px';
+  return panel;
+}
+
+function sectionLabel(text) {
+  return styled('div', {
+    fontSize: '10px',
+    color: '#aaa',
+    marginBottom: '6px',
+    userSelect: 'none'
+  }, text);
+}
+
+function startPlugin() {
+  loadData();
+  loadRecentColors();
+  loadBrushIcons();
+  makeToast();
+  makeFab();
+  makeToolbar();
+  makeUtilityMenu();
+  makeShapeToolbar();
+  makePalette();
+  makeBrushSettingsPanel();
+  makeEyedropperUI();
+  loadSettingsHtml();
+  restoreAll();
+  bindChatChange();
+  observeNew();
+  console.log('[STG] ready: touch-eyedropper-1');
+}
+
+/* ---------- 记忆色 ---------- */
 
 function loadRecentColors() {
-try {
-var raw = localStorage.getItem('stg_recent_colors');
-if (raw) {
-recentColors = JSON.parse(raw);
-if (!Array.isArray(recentColors)) recentColors = [];
-}
-} catch (e) {}
-}
-
-function saveRecentColors() {
-try {
-localStorage.setItem('stg_recent_colors', JSON.stringify(recentColors));
-} catch (e) {}
+  try {
+    var stored = JSON.parse(localStorage.getItem('stg_recent_colors') || '[]');
+    recentColors = Array.isArray(stored)
+      ? stored.filter(validColor).slice(0, 6)
+      : [];
+  } catch (e) {
+    recentColors = [];
+  }
 }
 
 function addRecentColor(color) {
-if (!color || color === '#NaNNaNNaN' || color === '#000000') return;
-var idx = recentColors.indexOf(color);
-if (idx > -1) {
-recentColors.splice(idx, 1);
-}
-recentColors.unshift(color);
-if (recentColors.length > 6) {
-recentColors = recentColors.slice(0, 6);
-}
-saveRecentColors();
-updateRecentColorUI();
+  if (!validColor(color)) return;
+  color = color.toLowerCase();
+  var index = recentColors.indexOf(color);
+  if (index >= 0) recentColors.splice(index, 1);
+  recentColors.unshift(color);
+  recentColors = recentColors.slice(0, 6);
+  try {
+    localStorage.setItem('stg_recent_colors', JSON.stringify(recentColors));
+  } catch (e) {
+    console.warn('[STG] recent colors:', e);
+  }
+  updateRecentColorUI();
 }
 
 function updateRecentColorUI() {
-var container = document.getElementById('stg-recent-colors');
-if (!container) return;
-container.innerHTML = '';
-for (var i = 0; i < 6; i++) {
-var cell = document.createElement('div');
-cell.style.width = '24px';
-cell.style.height = '24px';
-cell.style.borderRadius = '50%';
-cell.style.border = '2px solid rgba(255,255,255,0.2)';
-cell.style.boxSizing = 'border-box';
-cell.style.cursor = 'pointer';
-cell.style.transition = 'transform 0.15s ease';
-if (i < recentColors.length) {
-cell.style.background = recentColors[i];
-cell.setAttribute('data-recent-color', recentColors[i]);
-} else {
-cell.style.background = 'rgba(255,255,255,0.1)';
-}
-container.appendChild(cell);
-}
+  var container = byId('stg-recent-colors');
+  if (!container) return;
+  container.innerHTML = '';
+  for (var i = 0; i < 6; i++) {
+    var cell = styled('div', {
+      width: '24px',
+      height: '24px',
+      flexShrink: '0',
+      borderRadius: '50%',
+      border: '2px solid rgba(255,255,255,0.2)',
+      boxSizing: 'border-box',
+      cursor: 'pointer',
+      background: recentColors[i] || 'rgba(255,255,255,0.1)'
+    });
+    if (recentColors[i]) {
+      cell.setAttribute('data-recent-color', recentColors[i]);
+    }
+    container.appendChild(cell);
+  }
 }
 
 function loadBrushIcons() {
-try {
-var raw = localStorage.getItem('stg_brush_icons');
-if (raw) {
-var icons = JSON.parse(raw);
-for (var id in icons) {
-var preset = brushPresets.find(function(b) { return b.id === id; });
-if (preset) preset.icon = icons[id];
-}
-}
-} catch (e) {}
+  try {
+    var icons = JSON.parse(localStorage.getItem('stg_brush_icons') || '{}');
+    brushPresets.forEach(function (brush) {
+      if (typeof icons[brush.id] === 'string') brush.icon = icons[brush.id];
+    });
+  } catch (e) {
+    console.warn('[STG] brush icons:', e);
+  }
 }
 
 function saveBrushIcon(id, iconData) {
-try {
-var raw = localStorage.getItem('stg_brush_icons');
-var icons = raw ? JSON.parse(raw) : {};
-icons[id] = iconData;
-localStorage.setItem('stg_brush_icons', JSON.stringify(icons));
-} catch (e) {}
+  try {
+    var icons = JSON.parse(localStorage.getItem('stg_brush_icons') || '{}');
+    icons[id] = iconData;
+    localStorage.setItem('stg_brush_icons', JSON.stringify(icons));
+  } catch (e) {
+    console.warn('[STG] save brush icon:', e);
+  }
 }
+
+/* ---------- 提示、设置、悬浮球 ---------- */
 
 function makeToast() {
-if (document.getElementById('stg-toast')) return;
-var el = document.createElement('div');
-el.id = 'stg-toast';
-document.body.appendChild(el);
+  if (byId('stg-toast')) return;
+  var element = document.createElement('div');
+  element.id = 'stg-toast';
+  document.body.appendChild(element);
 }
 
-function toast(msg, ms) {
-var el = document.getElementById('stg-toast');
-if (!el) return;
-el.textContent = msg;
-el.classList.add('stg-show');
-setTimeout(function () {
-el.classList.remove('stg-show');
-}, ms || 2500);
+function toast(message, duration) {
+  var element = byId('stg-toast');
+  if (!element) return;
+  clearTimeout(toastTimer);
+  element.textContent = message;
+  element.classList.add('stg-show');
+  toastTimer = setTimeout(function () {
+    element.classList.remove('stg-show');
+  }, duration || 2500);
 }
 
 function loadSettingsHtml() {
-try {
-var url = 'scripts/extensions/third-party/st-graffiti/settings.html';
-if (typeof jQuery !== 'undefined') {
-jQuery.get(url, function (html) {
-jQuery('#extensions_settings2').append(html);
-jQuery('#stg-reset-btn').on('click', function () {
-resetFabPosition();
-});
-});
-}
-} catch (e) {
-console.warn('[STG] settings load error', e);
-}
+  try {
+    if (typeof jQuery === 'undefined') return;
+    jQuery.get(
+      'scripts/extensions/third-party/st-graffiti/settings.html',
+      function (html) {
+        if (byId('stg-reset-btn')) return;
+        jQuery('#extensions_settings2').append(html);
+        jQuery('#stg-reset-btn').on('click', resetFabPosition);
+      }
+    );
+  } catch (e) {
+    console.warn('[STG] settings:', e);
+  }
 }
 
 function getDefaultFabPos() {
-return {
-left: window.innerWidth - FAB_SIZE + FAB_HIDE,
-top: window.innerHeight - 130
-};
+  return {
+    left: window.innerWidth - FAB_SIZE + FAB_HIDE,
+    top: Math.max(0, window.innerHeight - 130)
+  };
 }
 
 function loadFabPos() {
-try {
-var raw = localStorage.getItem('stg_fab_pos');
-if (raw) {
-var p = JSON.parse(raw);
-if (typeof p.left === 'number' && typeof p.top === 'number') {
-if (p.left > -FAB_SIZE && p.left < window.innerWidth && p.top >= 0 && p.top < window.innerHeight) {
-return p;
-}
-}
-}
-} catch (e) {}
-return getDefaultFabPos();
+  try {
+    var p = JSON.parse(localStorage.getItem('stg_fab_pos') || 'null');
+    if (
+      p && typeof p.left === 'number' && typeof p.top === 'number' &&
+      p.left > -FAB_SIZE && p.left < window.innerWidth &&
+      p.top >= 0 && p.top < window.innerHeight
+    ) return p;
+  } catch (e) {}
+  return getDefaultFabPos();
 }
 
-function saveFabPos(l, topVal) {
-try {
-localStorage.setItem('stg_fab_pos', JSON.stringify({left: l, top: topVal}));
-} catch (e) {}
+function saveFabPos(left, top) {
+  try {
+    localStorage.setItem('stg_fab_pos', JSON.stringify({left: left, top: top}));
+  } catch (e) {}
 }
 
 function resetFabPosition() {
-var pos = getDefaultFabPos();
-var fab = document.getElementById('stg-fab');
-if (fab) {
-fab.style.transition = 'left 0.3s ease, top 0.3s ease';
-fab.style.left = pos.left + 'px';
-fab.style.top = pos.top + 'px';
-fab.style.display = 'flex';
-setTimeout(function () {
-fab.style.transition = 'left 0.3s ease';
-}, 400);
-}
-saveFabPos(pos.left, pos.top);
-toast('\u60AC\u6D6E\u7403\u5DF2\u91CD\u7F6E\uFF01');
+  var pos = getDefaultFabPos();
+  var fab = byId('stg-fab');
+  if (fab) {
+    fab.style.left = pos.left + 'px';
+    fab.style.top = pos.top + 'px';
+    fab.style.display = 'flex';
+  }
+  saveFabPos(pos.left, pos.top);
+  toast('悬浮球已重置！');
 }
 
 function makeFab() {
-if (document.getElementById('stg-fab')) return;
-var fab = document.createElement('div');
-fab.id = 'stg-fab';
-fab.textContent = '\u270F';
-var pos = loadFabPos();
-fab.style.left = pos.left + 'px';
-fab.style.top = pos.top + 'px';
-fab.style.transition = 'left 0.3s ease';
-document.body.appendChild(fab);
+  if (byId('stg-fab')) return;
+  var fab = document.createElement('div');
+  fab.id = 'stg-fab';
+  fab.textContent = '\u270F';
+  var pos = loadFabPos();
+  fab.style.left = pos.left + 'px';
+  fab.style.top = pos.top + 'px';
+  fab.style.transition = 'left 0.3s ease';
+  document.body.appendChild(fab);
 
-fab.addEventListener('pointerdown', function (e) {
-e.preventDefault();
-fabDragged = false;
-fabSX = e.clientX;
-fabSY = e.clientY;
-fabSL = parseInt(fab.style.left) || 0;
-fabST = parseInt(fab.style.top) || 0;
-fab.setPointerCapture(e.pointerId);
-fab.style.transition = 'none';
-});
+  var activePointer = null;
 
-fab.addEventListener('pointermove', function (e) {
-var dx = e.clientX - fabSX;
-var dy = e.clientY - fabSY;
-if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
-fabDragged = true;
-var nl = fabSL + dx;
-var nt = fabST + dy;
-nl = Math.max(-FAB_HIDE, Math.min(window.innerWidth - FAB_SIZE + FAB_HIDE, nl));
-nt = Math.max(0, Math.min(window.innerHeight - FAB_SIZE, nt));
-fab.style.left = nl + 'px';
-fab.style.top = nt + 'px';
-}
-});
+  fab.addEventListener('pointerdown', function (e) {
+    if (activePointer !== null) return;
+    e.preventDefault();
+    activePointer = e.pointerId;
+    fabDragged = false;
+    fabSX = e.clientX;
+    fabSY = e.clientY;
+    fabSL = parseFloat(fab.style.left) || 0;
+    fabST = parseFloat(fab.style.top) || 0;
+    fab.setPointerCapture(e.pointerId);
+    fab.style.transition = 'none';
+  });
 
-fab.addEventListener('pointerup', function () {
-fab.style.transition = 'left 0.3s ease';
-if (fabDragged) {
-var currentL = parseInt(fab.style.left) || 0;
-var finalL = currentL;
-if (currentL < SNAP_ZONE) {
-finalL = -FAB_HIDE;
-} else if (currentL > window.innerWidth - FAB_SIZE - SNAP_ZONE) {
-finalL = window.innerWidth - FAB_SIZE + FAB_HIDE;
-}
-fab.style.left = finalL + 'px';
-var finalTop = parseInt(fab.style.top) || 0;
-saveFabPos(finalL, finalTop);
-}
-});
+  fab.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== activePointer) return;
+    var dx = e.clientX - fabSX;
+    var dy = e.clientY - fabSY;
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) fabDragged = true;
+    if (!fabDragged) return;
+    fab.style.left = clamp(
+      fabSL + dx, -FAB_HIDE, window.innerWidth - FAB_SIZE + FAB_HIDE
+    ) + 'px';
+    fab.style.top = clamp(
+      fabST + dy, 0, Math.max(0, window.innerHeight - FAB_SIZE)
+    ) + 'px';
+  });
 
-fab.addEventListener('click', function (e) {
-if (fabDragged) {
-e.stopPropagation();
-return;
+  fab.addEventListener('pointerup', function (e) {
+    if (e.pointerId !== activePointer) return;
+    activePointer = null;
+    fab.style.transition = 'left 0.3s ease';
+    if (!fabDragged) return;
+    var left = parseFloat(fab.style.left) || 0;
+    if (left < SNAP_ZONE) left = -FAB_HIDE;
+    else if (left > window.innerWidth - FAB_SIZE - SNAP_ZONE) {
+      left = window.innerWidth - FAB_SIZE + FAB_HIDE;
+    }
+    fab.style.left = left + 'px';
+    saveFabPos(left, parseFloat(fab.style.top) || 0);
+  });
+
+  fab.addEventListener('pointercancel', function () {
+    activePointer = null;
+    fabDragged = true;
+  });
+
+  fab.addEventListener('click', function (e) {
+    if (fabDragged) {
+      e.stopPropagation();
+      return;
+    }
+    enterDraw();
+  });
 }
-enterDraw();
-});
-}
+
+/* ---------- 工具栏 ---------- */
 
 function makeToolbar() {
-if (document.getElementById('stg-toolbar')) return;
-var bar = document.createElement('div');
-bar.id = 'stg-toolbar';
+  if (byId('stg-toolbar')) return;
+  var bar = document.createElement('div');
+  bar.id = 'stg-toolbar';
+  var items = [
+    ['mouse', '\uD83D\uDDB1'],
+    ['sep1'],
+    ['brush', '\uD83D\uDD8C'],
+    ['eraser', '\u2B55'],
+    ['sep2'],
+    ['undo', '↶'],
+    ['redo', '↷'],
+    ['sep3'],
+    ['utility', '🔧'],
+    ['color', ''],
+    ['clear', '\uD83D\uDDD1'],
+    ['save', '\uD83D\uDCBE'],
+    ['exit', '\u2716']
+  ];
 
-var items = [
-{id: 'mouse', label: '\uD83D\uDDB1'},
-{id: 'sep1', sep: true},
-{id: 'brush', label: '\uD83D\uDD8C'},
-{id: 'eraser', label: '\u2B55'},
-{id: 'sep2', sep: true},
-{id: 'undo', label: '↶'},
-{id: 'redo', label: '↷'},
-{id: 'sep3', sep: true},
-{id: 'utility', label: '🔧'},
-{id: 'color', isColor: true},
-{id: 'clear', label: '\uD83D\uDDD1'},
-{id: 'save', label: '\uD83D\uDCBE'},
-{id: 'exit', label: '\u2716'}
-];
-
-for (var i = 0; i < items.length; i++) {
-var item = items[i];
-if (item.sep) {
-var sep = document.createElement('div');
-sep.className = 'stg-sep';
-bar.appendChild(sep);
-} else {
-var btn = document.createElement('button');
-btn.className = 'stg-btn';
-btn.setAttribute('data-stg', item.id);
-if (item.isColor) {
-btn.id = 'stg-color-btn';
-var colorBox = document.createElement('div');
-colorBox.id = 'stg-color-indicator';
-colorBox.style.width = '20px';
-colorBox.style.height = '20px';
-colorBox.style.borderRadius = '4px';
-colorBox.style.background = penColor;
-colorBox.style.border = '2px solid rgba(255,255,255,0.6)';
-colorBox.style.boxSizing = 'border-box';
-btn.appendChild(colorBox);
-} else {
-btn.textContent = item.label;
-}
-bar.appendChild(btn);
-}
-}
-
-document.body.appendChild(bar);
-
-bar.addEventListener('click', function (e) {
-var tgt = e.target.closest('[data-stg]');
-if (!tgt) return;
-onTool(tgt.getAttribute('data-stg'));
-});
+  items.forEach(function (item) {
+    if (item.length === 1) {
+      var sep = document.createElement('div');
+      sep.className = 'stg-sep';
+      bar.appendChild(sep);
+      return;
+    }
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'stg-btn';
+    button.setAttribute('data-stg', item[0]);
+    if (item[0] === 'color') {
+      button.id = 'stg-color-btn';
+      var indicator = styled('div', {
+        width: '20px',
+        height: '20px',
+        borderRadius: '4px',
+        background: penColor,
+        border: '2px solid rgba(255,255,255,0.6)',
+        boxSizing: 'border-box',
+        pointerEvents: 'none'
+      });
+      indicator.id = 'stg-color-indicator';
+      button.appendChild(indicator);
+    } else {
+      button.textContent = item[1];
+    }
+    bar.appendChild(button);
+  });
+  document.body.appendChild(bar);
+  bar.addEventListener('click', function (e) {
+    var target = e.target.closest('[data-stg]');
+    if (target) onTool(target.getAttribute('data-stg'));
+  });
 }
 
 function makeUtilityMenu() {
-if (document.getElementById('stg-utility-menu')) return;
-var menu = document.createElement('div');
-menu.id = 'stg-utility-menu';
-menu.style.position = 'fixed';
-menu.style.left = '60px';
-menu.style.top = '50%';
-menu.style.transform = 'translateY(-50%)';
-menu.style.background = 'rgba(30,30,30,0.95)';
-menu.style.borderRadius = '12px';
-menu.style.border = '2px solid rgba(255,133,157,0.4)';
-menu.style.padding = '8px';
-menu.style.zIndex = '9999999';
-menu.style.display = 'none';
-menu.style.flexDirection = 'column';
-menu.style.gap = '4px';
+  if (byId('stg-utility-menu')) return;
+  var menu = makePanel('stg-utility-menu');
+  menu.style.padding = '8px';
+  menu.style.flexDirection = 'column';
+  menu.style.gap = '4px';
 
-var items = [
-{id: 'eyedropper', label: '💧', title: '取色器'},
-{id: 'shapes', label: '▢', title: '形状'}
-];
-
-for (var i = 0; i < items.length; i++) {
-var item = items[i];
-var btn = document.createElement('button');
-btn.className = 'stg-util-btn';
-btn.setAttribute('data-util', item.id);
-btn.textContent = item.label;
-btn.title = item.title;
-btn.style.width = '36px';
-btn.style.height = '36px';
-btn.style.borderRadius = '8px';
-btn.style.border = 'none';
-btn.style.background = 'transparent';
-btn.style.color = '#ccc';
-btn.style.fontSize = '16px';
-btn.style.cursor = 'pointer';
-btn.style.transition = 'background 0.15s ease';
-menu.appendChild(btn);
-}
-
-document.body.appendChild(menu);
-
-menu.addEventListener('click', function(e) {
-var btn = e.target.closest('[data-util]');
-if (!btn) return;
-var utilId = btn.getAttribute('data-util');
-if (utilId === 'eyedropper') {
-activateEyedropper();
-} else if (utilId === 'shapes') {
-toggleShapeToolbar();
-}
-menu.style.display = 'none';
-});
-
-menu.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-menu.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
+  [
+    ['eyedropper', '💧', '取色器'],
+    ['shapes', '▢', '形状']
+  ].forEach(function (item) {
+    var button = styled('button', {
+      width: '36px',
+      height: '36px',
+      borderRadius: '8px',
+      border: 'none',
+      background: 'transparent',
+      color: '#ccc',
+      fontSize: '16px',
+      cursor: 'pointer'
+    }, item[1]);
+    button.type = 'button';
+    button.title = item[2];
+    button.setAttribute('data-util', item[0]);
+    menu.appendChild(button);
+  });
+  document.body.appendChild(menu);
+  menu.addEventListener('click', function (e) {
+    var button = e.target.closest('[data-util]');
+    if (!button) return;
+    menu.style.display = 'none';
+    if (button.getAttribute('data-util') === 'eyedropper') {
+      activateEyedropper();
+    } else {
+      toggleShapeToolbar();
+    }
+  });
+  menu.addEventListener('pointerdown', stopEvent);
+  menu.addEventListener('pointermove', stopEvent);
 }
 
 function makeShapeToolbar() {
-if (document.getElementById('stg-shape-toolbar')) return;
-var bar = document.createElement('div');
-bar.id = 'stg-shape-toolbar';
-bar.style.position = 'fixed';
-bar.style.left = '50%';
-bar.style.bottom = '20px';
-bar.style.transform = 'translateX(-50%) translateY(150%)';
-bar.style.display = 'flex';
-bar.style.gap = '6px';
-bar.style.padding = '8px 12px';
-bar.style.background = 'rgba(30,30,30,0.95)';
-bar.style.borderRadius = '16px';
-bar.style.border = '2px solid rgba(255,133,157,0.4)';
-bar.style.zIndex = '9999999';
-bar.style.transition = 'transform 0.3s ease';
+  if (byId('stg-shape-toolbar')) return;
+  var bar = styled('div', {
+    position: 'fixed',
+    left: '50%',
+    bottom: '20px',
+    transform: 'translateX(-50%) translateY(150%)',
+    display: 'flex',
+    gap: '6px',
+    padding: '8px 12px',
+    background: 'rgba(30,30,30,0.95)',
+    borderRadius: '16px',
+    border: '2px solid rgba(255,133,157,0.4)',
+    zIndex: '9999999',
+    transition: 'transform 0.3s ease'
+  });
+  bar.id = 'stg-shape-toolbar';
 
-var shapes = [
-{id: 'line', label: '—', title: '直线'},
-{id: 'wave', label: '~', title: '波浪线'},
-{id: 'rect', label: '▢', title: '矩形'},
-{id: 'ellipse', label: '○', title: '椭圆'},
-{id: 'curve', label: '⌢', title: '曲线'},
-{id: 'close', label: '✕', title: '关闭'}
-];
+  [
+    ['line', '—'], ['wave', '~'], ['rect', '▢'],
+    ['ellipse', '○'], ['curve', '⌢'], ['close', '✕']
+  ].forEach(function (item) {
+    var button = styled('button', {
+      width: '40px',
+      height: '40px',
+      borderRadius: '10px',
+      border: 'none',
+      background: 'transparent',
+      color: '#ccc',
+      fontSize: '18px',
+      cursor: 'pointer'
+    }, item[1]);
+    button.type = 'button';
+    button.className = 'stg-shape-btn';
+    button.setAttribute('data-shape', item[0]);
+    button.title = getShapeName(item[0]);
+    bar.appendChild(button);
+  });
+  document.body.appendChild(bar);
 
-for (var i = 0; i < shapes.length; i++) {
-var shape = shapes[i];
-var btn = document.createElement('button');
-btn.className = 'stg-shape-btn';
-btn.setAttribute('data-shape', shape.id);
-btn.textContent = shape.label;
-btn.title = shape.title;
-btn.style.width = '40px';
-btn.style.height = '40px';
-btn.style.borderRadius = '10px';
-btn.style.border = 'none';
-btn.style.background = 'transparent';
-btn.style.color = '#ccc';
-btn.style.fontSize = '18px';
-btn.style.cursor = 'pointer';
-btn.style.transition = 'background 0.15s ease, color 0.15s ease';
-bar.appendChild(btn);
-}
-
-document.body.appendChild(bar);
-
-bar.addEventListener('click', function(e) {
-var btn = e.target.closest('[data-shape]');
-if (!btn) return;
-var sid = btn.getAttribute('data-shape');
-if (sid === 'close') {
-hideShapeToolbar();
-return;
-}
-shapeMode = sid;
-tool = 'shape';
-var allBtns = bar.querySelectorAll('.stg-shape-btn');
-for (var j = 0; j < allBtns.length; j++) {
-var sbtn = allBtns[j];
-if (sbtn.getAttribute('data-shape') === 'close') continue;
-sbtn.style.background = 'transparent';
-sbtn.style.color = '#ccc';
-}
-btn.style.background = 'rgba(255,133,157,0.2)';
-btn.style.color = '#ff859d';
-hilite();
-updatePointer();
-toast('已选择形状: ' + getShapeName(sid));
-});
-
-bar.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-bar.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
+  bar.addEventListener('click', function (e) {
+    var button = e.target.closest('[data-shape]');
+    if (!button) return;
+    var id = button.getAttribute('data-shape');
+    if (id === 'close') {
+      hideShapeToolbar();
+      return;
+    }
+    shapeMode = id;
+    tool = 'shape';
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-shape]'), function (b) {
+      b.style.background = b === button ? 'rgba(255,133,157,0.2)' : 'transparent';
+      b.style.color = b === button ? '#ff859d' : '#ccc';
+    });
+    hilite();
+    updatePointer();
+    toast('已选择形状: ' + getShapeName(id));
+  });
+  bar.addEventListener('pointerdown', stopEvent);
+  bar.addEventListener('pointermove', stopEvent);
 }
 
 function getShapeName(id) {
-var names = {
-line: '直线',
-wave: '波浪线',
-rect: '矩形',
-ellipse: '椭圆',
-curve: '曲线'
-};
-return names[id] || id;
+  return {
+    line: '直线', wave: '波浪线', rect: '矩形',
+    ellipse: '椭圆', curve: '曲线', close: '关闭'
+  }[id] || id;
 }
 
 function toggleShapeToolbar() {
-var bar = document.getElementById('stg-shape-toolbar');
-if (!bar) return;
-if (bar.style.transform.indexOf('translateY(0)') > -1) {
-bar.style.transform = 'translateX(-50%) translateY(150%)';
-} else {
-bar.style.transform = 'translateX(-50%) translateY(0)';
-}
+  var bar = byId('stg-shape-toolbar');
+  if (!bar) return;
+  bar.style.transform = bar.style.transform.indexOf('translateY(0)') >= 0
+    ? 'translateX(-50%) translateY(150%)'
+    : 'translateX(-50%) translateY(0)';
 }
 
 function hideShapeToolbar() {
-var bar = document.getElementById('stg-shape-toolbar');
-if (bar) {
-bar.style.transform = 'translateX(-50%) translateY(150%)';
+  var bar = byId('stg-shape-toolbar');
+  if (bar) bar.style.transform = 'translateX(-50%) translateY(150%)';
+  shapeMode = null;
+  if (tool === 'shape') {
+    tool = 'brush';
+    hilite();
+    updatePointer();
+  }
 }
-shapeMode = null;
-if (tool === 'shape') {
-tool = 'brush';
-hilite();
-updatePointer();
-}
-}
+
+/* ---------- 手机取色器：按下预览，拖动更新，松手确认 ---------- */
 
 function makeEyedropperUI() {
-if (document.getElementById('stg-eyedropper-cursor')) return;
-var cursor = document.createElement('div');
-cursor.id = 'stg-eyedropper-cursor';
-cursor.style.position = 'fixed';
-cursor.style.pointerEvents = 'none';
-cursor.style.zIndex = '10000000';
-cursor.style.display = 'none';
-cursor.style.width = '80px';
-cursor.style.height = '80px';
+  if (eyedropper.ui) return;
 
-var preview = document.createElement('div');
-preview.id = 'stg-eyedropper-preview';
-preview.style.width = '100%';
-preview.style.height = '100%';
-preview.style.border = '3px solid white';
-preview.style.borderRadius = '50%';
-preview.style.boxShadow = '0 0 0 2px black, 0 4px 16px rgba(0,0,0,0.6)';
-preview.style.boxSizing = 'border-box';
-cursor.appendChild(preview);
+  var ui = styled('div', {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '0',
+    height: '0',
+    display: 'none',
+    pointerEvents: 'none',
+    zIndex: '10000002'
+  });
+  ui.id = 'stg-eyedropper-ui';
 
-var colorLabel = document.createElement('div');
-colorLabel.id = 'stg-eyedropper-label';
-colorLabel.style.position = 'absolute';
-colorLabel.style.top = '100%';
-colorLabel.style.left = '50%';
-colorLabel.style.transform = 'translateX(-50%)';
-colorLabel.style.marginTop = '8px';
-colorLabel.style.padding = '4px 8px';
-colorLabel.style.background = 'rgba(0,0,0,0.9)';
-colorLabel.style.color = 'white';
-colorLabel.style.fontSize = '11px';
-colorLabel.style.fontFamily = 'monospace';
-colorLabel.style.borderRadius = '4px';
-colorLabel.style.whiteSpace = 'nowrap';
-cursor.appendChild(colorLabel);
+  var marker = styled('div', {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '18px',
+    height: '18px',
+    border: '2px solid white',
+    borderRadius: '50%',
+    boxSizing: 'border-box',
+    boxShadow: '0 0 0 1px #000',
+    transform: 'translate(-50%,-50%)',
+    pointerEvents: 'none'
+  });
+  marker.appendChild(styled('div', {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: '4px',
+    height: '4px',
+    background: '#fff',
+    border: '1px solid #000',
+    borderRadius: '50%',
+    transform: 'translate(-50%,-50%)'
+  }));
+  ui.appendChild(marker);
 
-document.body.appendChild(cursor);
+  var lens = styled('div', {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '96px',
+    height: '96px',
+    boxSizing: 'border-box',
+    border: '3px solid white',
+    borderRadius: '50%',
+    overflow: 'hidden',
+    boxShadow: '0 0 0 1px #000,0 4px 12px rgba(0,0,0,.5)',
+    backgroundColor: '#ddd',
+    backgroundImage:
+      'conic-gradient(#aaa 25%,#eee 0 50%,#aaa 0 75%,#eee 0)',
+    backgroundSize: '12px 12px',
+    pointerEvents: 'none'
+  });
+
+  var canvas = styled('canvas', {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    width: '100%',
+    height: '100%',
+    imageRendering: 'pixelated',
+    pointerEvents: 'none'
+  });
+  canvas.width = 25;
+  canvas.height = 25;
+  canvas.id = 'stg-mag-canvas';
+  lens.appendChild(canvas);
+
+  lens.appendChild(styled('div', {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: '8px',
+    height: '8px',
+    border: '1px solid white',
+    boxShadow: '0 0 0 1px black',
+    transform: 'translate(-50%,-50%)',
+    boxSizing: 'border-box',
+    pointerEvents: 'none'
+  }));
+  ui.appendChild(lens);
+
+  var label = styled('div', {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    background: 'rgba(20,20,20,.94)',
+    color: '#fff',
+    fontSize: '12px',
+    fontFamily: 'monospace',
+    whiteSpace: 'nowrap',
+    transform: 'translateX(-50%)',
+    pointerEvents: 'none'
+  }, '按住涂鸦取色');
+  ui.appendChild(label);
+  document.body.appendChild(ui);
+
+  eyedropper.ui = ui;
+  eyedropper.marker = marker;
+  eyedropper.lens = lens;
+  eyedropper.canvas = canvas;
+  eyedropper.label = label;
 }
 
 function activateEyedropper() {
-tool = 'eyedropper';
-hilite();
-toast('在涂鸦上取色，点击确认');
+  if (eyedropper.active) return;
+  if (!drawing || pressing || shapeDrawing) return;
+  makeEyedropperUI();
 
-var cursor = document.getElementById('stg-eyedropper-cursor');
-if (cursor) cursor.style.display = 'block';
+  eyedropper.previousTool = tool === 'eyedropper' ? 'brush' : tool;
+  eyedropper.originalColor = penColor;
+  eyedropper.currentColor = null;
+  eyedropper.pointerId = null;
+  eyedropper.active = true;
+  tool = 'eyedropper';
 
-document.addEventListener('pointermove', eyedropperMove);
-document.addEventListener('pointerdown', eyedropperClick, {capture: true});
+  hideBrushSettings();
+  hideElement('stg-palette');
+  hideElement('stg-utility-menu');
+  eyedropper.ui.style.display = 'none';
+  updatePointer();
+  hilite();
+
+  /*
+   * 独立透明触摸层只在取色时存在。
+   * 不往画笔 Canvas 添加或删除绘图监听器。
+   */
+  var layer = styled('div', {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    right: '0',
+    bottom: '0',
+    background: 'transparent',
+    zIndex: '10000001',
+    touchAction: 'none',
+    userSelect: 'none',
+    WebkitUserSelect: 'none'
+  });
+  layer.id = 'stg-eyedropper-touch-layer';
+
+  var cancelButton = styled('button', {
+    position: 'absolute',
+    right: '12px',
+    top: '12px',
+    padding: '10px 14px',
+    borderRadius: '10px',
+    border: '1px solid #ff859d',
+    background: '#242424',
+    color: '#fff',
+    fontSize: '13px'
+  }, '取消取色');
+  cancelButton.type = 'button';
+  cancelButton.addEventListener('pointerdown', stopEvent);
+  cancelButton.addEventListener('click', function (e) {
+    e.stopPropagation();
+    deactivateEyedropper(false);
+  });
+  layer.appendChild(cancelButton);
+
+  layer.addEventListener('pointerdown', eyedropperClick);
+  layer.addEventListener('pointermove', eyedropperMove);
+  layer.addEventListener('pointerup', eyedropperRelease);
+  layer.addEventListener('pointercancel', eyedropperCancel);
+  layer.addEventListener('lostpointercapture', function (e) {
+    if (eyedropper.active && eyedropper.pointerId === e.pointerId) {
+      deactivateEyedropper(false);
+    }
+  });
+  layer.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  eyedropper.layer = layer;
+  document.body.appendChild(layer);
+  window.addEventListener('blur', eyedropperCancel);
+  toast('按住涂鸦拖动取色，松手确认');
 }
 
-function deactivateEyedropper() {
-document.removeEventListener('pointermove', eyedropperMove);
-document.removeEventListener('pointerdown', eyedropperClick, {capture: true});
-var cursor = document.getElementById('stg-eyedropper-cursor');
-if (cursor) cursor.style.display = 'none';
+function deactivateEyedropper(keepColor) {
+  var wasActive = eyedropper.active;
+  var previousTool = eyedropper.previousTool;
+  var originalColor = eyedropper.originalColor;
+  var layer = eyedropper.layer;
+
+  eyedropper.active = false;
+  eyedropper.pointerId = null;
+  eyedropper.currentColor = null;
+  eyedropper.layer = null;
+
+  window.removeEventListener('blur', eyedropperCancel);
+  if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+  if (eyedropper.ui) eyedropper.ui.style.display = 'none';
+
+  if (wasActive && !keepColor && validColor(originalColor)) {
+    previewColor(originalColor);
+    syncPaletteFromColor(originalColor);
+  }
+  if (tool === 'eyedropper') {
+    tool = previousTool || 'brush';
+  }
+  if (wasActive) {
+    updatePointer();
+    hilite();
+  }
 }
 
-function eyedropperMove(e) {
-if (tool !== 'eyedropper') {
-deactivateEyedropper();
-return;
-}
-
-var cursor = document.getElementById('stg-eyedropper-cursor');
-var preview = document.getElementById('stg-eyedropper-preview');
-var label = document.getElementById('stg-eyedropper-label');
-if (!cursor || !preview || !label) return;
-
-cursor.style.left = (e.clientX - 40) + 'px';
-cursor.style.top = (e.clientY - 120) + 'px';
-
-var targetCanvas = null;
-var allCanvases = document.querySelectorAll('.stg-canvas');
-for (var i = 0; i < allCanvases.length; i++) {
-var rect = allCanvases[i].getBoundingClientRect();
-if (e.clientX >= rect.left && e.clientX <= rect.right &&
-e.clientY >= rect.top && e.clientY <= rect.bottom) {
-targetCanvas = allCanvases[i];
-break;
-}
-}
-
-if (!targetCanvas) {
-preview.style.background = '#333';
-label.textContent = '无涂鸦';
-cursor.setAttribute('data-color', '');
-return;
-}
-
-var canvasRect = targetCanvas.getBoundingClientRect();
-var canvasX = Math.floor((e.clientX - canvasRect.left) * (targetCanvas.width / canvasRect.width));
-var canvasY = Math.floor((e.clientY - canvasRect.top) * (targetCanvas.height / canvasRect.height));
-
-if (canvasX < 0 || canvasX >= targetCanvas.width || canvasY < 0 || canvasY >= targetCanvas.height) {
-preview.style.background = '#333';
-label.textContent = '边界外';
-cursor.setAttribute('data-color', '');
-return;
-}
-
-try {
-var srcCtx = targetCanvas.getContext('2d');
-var pixel = srcCtx.getImageData(canvasX, canvasY, 1, 1).data;
-
-if (pixel[3] === 0) {
-preview.style.background = '#333';
-label.textContent = '透明';
-cursor.setAttribute('data-color', '');
-} else {
-var color = rgbToHex(pixel[0], pixel[1], pixel[2]);
-preview.style.background = color;
-label.textContent = color.toUpperCase();
-cursor.setAttribute('data-color', color);
-}
-} catch (err) {
-preview.style.background = '#333';
-label.textContent = '读取失败';
-cursor.setAttribute('data-color', '');
-}
+function eyedropperCancel() {
+  if (eyedropper.active) deactivateEyedropper(false);
 }
 
 function eyedropperClick(e) {
-if (tool !== 'eyedropper') return;
-e.preventDefault();
-e.stopPropagation();
+  if (!eyedropper.active || eyedropper.pointerId !== null) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
 
-var cursor = document.getElementById('stg-eyedropper-cursor');
-var color = cursor ? cursor.getAttribute('data-color') : null;
+  eyedropper.pointerId = e.pointerId;
+  try {
+    eyedropper.layer.setPointerCapture(e.pointerId);
+  } catch (error) {
+    console.warn('[STG] eyedropper capture:', error);
+  }
 
-if (color && color !== '' && color !== '#000000') {
-applyColor(color);
-toast('已取色: ' + color);
-} else {
-toast('请在涂鸦区域取色');
+  /* 第一次按下就采样，不再等待 pointermove。 */
+  sampleEyedropper(e.clientX, e.clientY);
 }
 
-tool = 'brush';
-hilite();
-deactivateEyedropper();
+function eyedropperMove(e) {
+  if (!eyedropper.active || e.pointerId !== eyedropper.pointerId) return;
+  e.preventDefault();
+  e.stopPropagation();
+  sampleEyedropper(e.clientX, e.clientY);
 }
 
-function updateColorIndicator() {
-var indicator = document.getElementById('stg-color-indicator');
-if (indicator) {
-indicator.style.background = penColor;
-}
-}
+function eyedropperRelease(e) {
+  if (!eyedropper.active || e.pointerId !== eyedropper.pointerId) return;
+  e.preventDefault();
+  e.stopPropagation();
 
-function makeBrushSettingsPanel() {
-if (document.getElementById('stg-brush-settings')) return;
-var panel = document.createElement('div');
-panel.id = 'stg-brush-settings';
-panel.style.position = 'fixed';
-panel.style.left = '60px';
-panel.style.top = '50%';
-panel.style.transform = 'translateY(-50%)';
-panel.style.background = 'rgba(30,30,30,0.95)';
-panel.style.borderRadius = '16px';
-panel.style.border = '2px solid rgba(255,133,157,0.4)';
-panel.style.padding = '0';
-panel.style.zIndex = '9999999';
-panel.style.display = 'none';
-panel.style.width = '260px';
-panel.style.maxHeight = '80vh';
-panel.style.overflowY = 'auto';
+  /* 以松手位置重新采样，不能沿用上一处有效颜色。 */
+  sampleEyedropper(e.clientX, e.clientY);
+  var color = eyedropper.currentColor;
+  eyedropper.pointerId = null;
 
-var tabBar = document.createElement('div');
-tabBar.style.display = 'flex';
-tabBar.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-tabBar.style.background = 'rgba(0,0,0,0.2)';
-tabBar.style.borderRadius = '16px 16px 0 0';
-
-var tabs = [
-{id: 'brushes', label: '画笔'},
-{id: 'settings', label: '设置'}
-];
-
-for (var i = 0; i < tabs.length; i++) {
-var tab = tabs[i];
-var tabBtn = document.createElement('div');
-tabBtn.setAttribute('data-tab', tab.id);
-tabBtn.textContent = tab.label;
-tabBtn.style.flex = '1';
-tabBtn.style.padding = '10px';
-tabBtn.style.textAlign = 'center';
-tabBtn.style.fontSize = '12px';
-tabBtn.style.color = '#888';
-tabBtn.style.cursor = 'pointer';
-tabBtn.style.userSelect = 'none';
-tabBtn.style.transition = 'color 0.2s ease, background 0.2s ease';
-tabBtn.style.borderBottom = '2px solid transparent';
-if (tab.id === brushSettingsTab) {
-tabBtn.style.color = '#ff859d';
-tabBtn.style.borderBottomColor = '#ff859d';
-}
-tabBar.appendChild(tabBtn);
+  if (validColor(color)) {
+    deactivateEyedropper(true);
+    applyColor(color);
+    syncPaletteFromColor(color);
+  } else {
+    deactivateEyedropper(false);
+    toast('松手位置没有涂鸦颜色，保留原颜色');
+  }
 }
 
-panel.appendChild(tabBar);
+function findGraffitiCanvas(x, y) {
+  var layer = eyedropper.layer;
+  var elements;
 
-tabBar.addEventListener('click', function (e) {
-var tabBtn = e.target.closest('[data-tab]');
-if (!tabBtn) return;
-var newTab = tabBtn.getAttribute('data-tab');
-brushSettingsTab = newTab;
-var allTabs = tabBar.querySelectorAll('[data-tab]');
-for (var j = 0; j < allTabs.length; j++) {
-if (allTabs[j].getAttribute('data-tab') === newTab) {
-allTabs[j].style.color = '#ff859d';
-allTabs[j].style.borderBottomColor = '#ff859d';
-} else {
-allTabs[j].style.color = '#888';
-allTabs[j].style.borderBottomColor = 'transparent';
-}
-}
-updateBrushTabContent();
-});
+  /*
+   * 临时让触摸层不参与命中检测，寻找真正位于触点下的楼层。
+   * 这里只用于定位 Canvas，不读取 DOM 的 color/backgroundColor。
+   */
+  if (layer) layer.style.pointerEvents = 'none';
+  try {
+    elements = document.elementsFromPoint
+      ? document.elementsFromPoint(x, y)
+      : [document.elementFromPoint(x, y)];
+  } finally {
+    if (layer) layer.style.pointerEvents = 'auto';
+  }
 
-var content = document.createElement('div');
-content.style.padding = '12px';
+  for (var i = 0; i < elements.length; i++) {
+    var element = elements[i];
+    if (!element || !element.closest) continue;
+    if (element.closest('#stg-eyedropper-ui')) continue;
 
-var sizeRow = makeBrushSlider('大小', 1, 50, getCurrentBrushWidth(), function (v) {
-if (tool === 'eraser') {
-eraserWidth = v;
-} else if (brushType === 'highlighter') {
-highlighterWidth = v;
-} else {
-penWidth = v;
-}
-});
-content.appendChild(sizeRow);
+    var message = element.closest('#chat .mes');
+    if (!message) continue;
+    var canvas = message.querySelector('.mes_text .stg-canvas');
+    if (!canvas) continue;
 
-var opacityRow = makeBrushSlider('不透明度', 0, 100, getCurrentBrushOpacity() * 100, function (v) {
-if (tool === 'eraser') return;
-if (brushType === 'highlighter') {
-highlighterOpacity = v / 100;
-} else {
-penOpacity = v / 100;
-}
-});
-content.appendChild(opacityRow);
-
-var sep = document.createElement('div');
-sep.style.height = '1px';
-sep.style.background = 'rgba(255,255,255,0.1)';
-sep.style.margin = '12px 0';
-content.appendChild(sep);
-
-var tabContent = document.createElement('div');
-tabContent.id = 'stg-tab-content';
-content.appendChild(tabContent);
-
-panel.appendChild(content);
-document.body.appendChild(panel);
-
-updateBrushTabContent();
-
-panel.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-panel.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-});
-
-panel.addEventListener('click', function (e) {
-e.preventDefault();
-e.stopPropagation();
-var item = e.target.closest('[data-brush]');
-if (!item) return;
-var bid = item.getAttribute('data-brush');
-switchToBrush(bid);
-});
+    var rect = canvas.getBoundingClientRect();
+    if (
+      rect.width > 0 && rect.height > 0 &&
+      x >= rect.left && x < rect.right &&
+      y >= rect.top && y < rect.bottom
+    ) return canvas;
+  }
+  return null;
 }
 
-function updateBrushTabContent() {
-var tabContent = document.getElementById('stg-tab-content');
-if (!tabContent) return;
-tabContent.innerHTML = '';
+function sampleEyedropper(x, y) {
+  if (!eyedropper.active) return;
+  eyedropper.currentColor = null;
 
-if (brushSettingsTab === 'brushes') {
-var grid = document.createElement('div');
-grid.style.display = 'grid';
-grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-grid.style.gap = '8px';
+  var ui = eyedropper.ui;
+  var lens = eyedropper.lens;
+  var label = eyedropper.label;
+  var magCanvas = eyedropper.canvas;
+  var magContext = magCanvas.getContext('2d');
 
-for (var i = 0; i < brushPresets.length; i++) {
-var brush = brushPresets[i];
-var item = document.createElement('div');
-item.setAttribute('data-brush', brush.id);
-item.style.display = 'flex';
-item.style.flexDirection = 'column';
-item.style.alignItems = 'center';
-item.style.padding = '8px';
-item.style.borderRadius = '8px';
-item.style.cursor = 'pointer';
-item.style.border = '2px solid transparent';
-item.style.transition = 'border-color 0.15s ease, background 0.15s ease';
+  ui.style.display = 'block';
+  eyedropper.marker.style.left = x + 'px';
+  eyedropper.marker.style.top = y + 'px';
 
-if (brush.id === brushType) {
-item.style.borderColor = '#ff859d';
-item.style.background = 'rgba(255,133,157,0.1)';
+  var lensLeft = clamp(x - 48, 6, Math.max(6, window.innerWidth - 102));
+  var lensTop = y - 132;
+  if (lensTop < 6) lensTop = y + 28;
+  lensTop = clamp(lensTop, 6, Math.max(6, window.innerHeight - 130));
+
+  lens.style.left = lensLeft + 'px';
+  lens.style.top = lensTop + 'px';
+  lens.style.borderColor = '#fff';
+  label.style.left = (lensLeft + 48) + 'px';
+  label.style.top = (lensTop + 101) + 'px';
+
+  magContext.clearRect(0, 0, 25, 25);
+
+  var canvas = findGraffitiCanvas(x, y);
+  if (!canvas) {
+    label.textContent = '无涂鸦';
+    previewColor(eyedropper.originalColor);
+    syncPaletteFromColor(eyedropper.originalColor);
+    return;
+  }
+
+  var rect = canvas.getBoundingClientRect();
+  var px = clamp(
+    Math.floor((x - rect.left) * canvas.width / rect.width),
+    0, canvas.width - 1
+  );
+  var py = clamp(
+    Math.floor((y - rect.top) * canvas.height / rect.height),
+    0, canvas.height - 1
+  );
+
+  try {
+    var context = canvas.getContext('2d');
+    var pixel = context.getImageData(px, py, 1, 1).data;
+
+    /*
+     * 边缘处保留空白偏移，使放大镜中央始终对应采样像素。
+     */
+    var sourceLeft = Math.max(0, px - 12);
+    var sourceTop = Math.max(0, py - 12);
+    var sourceRight = Math.min(canvas.width, px + 13);
+    var sourceBottom = Math.min(canvas.height, py + 13);
+    var region = context.getImageData(
+      sourceLeft, sourceTop,
+      sourceRight - sourceLeft, sourceBottom - sourceTop
+    );
+    magContext.putImageData(
+      region,
+      sourceLeft - (px - 12),
+      sourceTop - (py - 12)
+    );
+
+    if (pixel[3] === 0) {
+      label.textContent = '透明区域';
+      previewColor(eyedropper.originalColor);
+      syncPaletteFromColor(eyedropper.originalColor);
+      return;
+    }
+
+    var color = rgbToHex(pixel[0], pixel[1], pixel[2]);
+    eyedropper.currentColor = color;
+    lens.style.borderColor = color;
+    label.textContent = color.toUpperCase();
+    previewColor(color);
+    syncPaletteFromColor(color);
+  } catch (error) {
+    label.textContent = '无法读取像素';
+    previewColor(eyedropper.originalColor);
+    syncPaletteFromColor(eyedropper.originalColor);
+    console.warn('[STG] eyedropper sample:', error);
+  }
 }
 
-var icon = document.createElement('img');
-icon.src = brush.icon || DEFAULT_BRUSH_ICON;
-icon.style.width = '48px';
-icon.style.height = '48px';
-icon.style.borderRadius = '8px';
-icon.style.objectFit = 'cover';
-icon.style.background = 'rgba(255,255,255,0.05)';
-icon.style.marginBottom = '6px';
-item.appendChild(icon);
-
-var name = document.createElement('div');
-name.textContent = brush.name;
-name.style.fontSize = '11px';
-name.style.color = '#ccc';
-name.style.userSelect = 'none';
-name.style.textAlign = 'center';
-item.appendChild(name);
-
-grid.appendChild(item);
-}
-tabContent.appendChild(grid);
-} else if (brushSettingsTab === 'settings') {
-var preset = brushPresets.find(function(b) { return b.id === brushType; });
-if (!preset) return;
-
-var infoLabel = document.createElement('div');
-infoLabel.textContent = '\u5F53\u524D\u753B\u7B14: ' + preset.name;
-infoLabel.style.fontSize = '11px';
-infoLabel.style.color = '#888';
-infoLabel.style.marginBottom = '10px';
-infoLabel.style.userSelect = 'none';
-tabContent.appendChild(infoLabel);
-
-var flowRow = makeDetailSlider('流量', 0, 100, brushFlow, function(v) {
-brushFlow = v;
-});
-tabContent.appendChild(flowRow);
-
-var hardnessRow = makeDetailSlider('硬度', 0, 100, brushHardness, function(v) {
-brushHardness = v;
-});
-tabContent.appendChild(hardnessRow);
-
-var spacingRow = makeDetailSlider('间距', 1, 100, brushSpacing, function(v) {
-brushSpacing = v;
-});
-tabContent.appendChild(spacingRow);
-
-var authorLabel = document.createElement('div');
-authorLabel.textContent = '\u6765\u6E90: ' + preset.author;
-authorLabel.style.fontSize = '10px';
-authorLabel.style.color = '#666';
-authorLabel.style.marginTop = '12px';
-authorLabel.style.userSelect = 'none';
-tabContent.appendChild(authorLabel);
-}
-}
+/* ---------- 画笔面板 ---------- */
 
 function getCurrentBrushWidth() {
-if (tool === 'eraser') return eraserWidth;
-if (brushType === 'highlighter') return highlighterWidth;
-return penWidth;
+  if (tool === 'eraser') return eraserWidth;
+  return brushType === 'highlighter' ? highlighterWidth : penWidth;
 }
 
 function getCurrentBrushOpacity() {
-if (tool === 'eraser') return 1.0;
-if (brushType === 'highlighter') return highlighterOpacity;
-return penOpacity;
+  if (tool === 'eraser') return 1;
+  return brushType === 'highlighter' ? highlighterOpacity : penOpacity;
+}
+
+function sliderControl(label, min, max, value, onChange) {
+  var row = styled('div', {marginBottom: '10px'});
+  row.appendChild(sectionLabel(label));
+  var wrap = styled('div', {
+    display: 'flex', alignItems: 'center', gap: '8px'
+  });
+  var input = styled('input', {
+    flex: '1', minWidth: '0', cursor: 'pointer'
+  });
+  input.type = 'range';
+  input.min = min;
+  input.max = max;
+  input.step = '1';
+  input.value = value;
+  var output = styled('div', {
+    width: '32px', flexShrink: '0', textAlign: 'right',
+    fontSize: '11px', color: '#ccc', userSelect: 'none'
+  }, Math.round(value));
+  wrap.appendChild(input);
+  wrap.appendChild(output);
+  row.appendChild(wrap);
+  input.addEventListener('pointerdown', stopEvent);
+  input.addEventListener('pointermove', stopEvent);
+  input.addEventListener('input', function (e) {
+    e.stopPropagation();
+    var number = Number(input.value);
+    output.textContent = Math.round(number);
+    onChange(number);
+  });
+  return {row: row, input: input, output: output};
+}
+
+function makeBrushSettingsPanel() {
+  if (byId('stg-brush-settings')) return;
+  var panel = makePanel('stg-brush-settings', 260);
+  panel.style.padding = '0';
+  var tabs = styled('div', {
+    display: 'flex',
+    borderBottom: '1px solid rgba(255,255,255,.1)'
+  });
+  ['brushes', 'settings'].forEach(function (id) {
+    var button = styled('button', {
+      flex: '1', padding: '10px', border: 'none',
+      background: 'transparent', color: '#aaa',
+      fontSize: '12px', cursor: 'pointer'
+    }, id === 'brushes' ? '画笔' : '设置');
+    button.type = 'button';
+    button.setAttribute('data-stg-tab', id);
+    button.addEventListener('click', function () {
+      brushSettingsTab = id;
+      updateBrushTabContent();
+    });
+    tabs.appendChild(button);
+  });
+  panel.appendChild(tabs);
+
+  var content = styled('div', {padding: '12px'});
+  brushSizeControl = sliderControl(
+    '大小', 1, 50, getCurrentBrushWidth(), function (value) {
+      if (tool === 'eraser') eraserWidth = value;
+      else if (brushType === 'highlighter') highlighterWidth = value;
+      else penWidth = value;
+    }
+  );
+  brushOpacityControl = sliderControl(
+    '不透明度', 0, 100, getCurrentBrushOpacity() * 100, function (value) {
+      if (tool === 'eraser') return;
+      if (brushType === 'highlighter') highlighterOpacity = value / 100;
+      else penOpacity = value / 100;
+    }
+  );
+  content.appendChild(brushSizeControl.row);
+  content.appendChild(brushOpacityControl.row);
+  content.appendChild(styled('div', {
+    height: '1px', background: 'rgba(255,255,255,.1)', margin: '12px 0'
+  }));
+  var tabContent = document.createElement('div');
+  tabContent.id = 'stg-tab-content';
+  content.appendChild(tabContent);
+  panel.appendChild(content);
+  document.body.appendChild(panel);
+  updateBrushTabContent();
+
+  panel.addEventListener('pointerdown', stopEvent);
+  panel.addEventListener('pointermove', stopEvent);
+  panel.addEventListener('pointerup', stopEvent);
+  panel.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var item = e.target.closest('[data-brush]');
+    if (item) switchToBrush(item.getAttribute('data-brush'));
+  });
+}
+
+function updateBrushTabContent() {
+  var content = byId('stg-tab-content');
+  if (!content) return;
+  var tabs = document.querySelectorAll('#stg-brush-settings [data-stg-tab]');
+  Array.prototype.forEach.call(tabs, function (tab) {
+    var selected = tab.getAttribute('data-stg-tab') === brushSettingsTab;
+    tab.style.color = selected ? '#ff859d' : '#aaa';
+    tab.style.borderBottom = selected
+      ? '2px solid #ff859d' : '2px solid transparent';
+  });
+  content.innerHTML = '';
+
+  if (brushSettingsTab === 'brushes') {
+    var grid = styled('div', {
+      display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '8px'
+    });
+    brushPresets.forEach(function (brush) {
+      var item = styled('div', {
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '8px', borderRadius: '8px', cursor: 'pointer',
+        border: '2px solid ' + (brush.id === brushType ? '#ff859d' : 'transparent'),
+        background: brush.id === brushType ? 'rgba(255,133,157,.1)' : 'transparent'
+      });
+      item.setAttribute('data-brush', brush.id);
+      var icon = styled('img', {
+        width: '48px', height: '48px', borderRadius: '8px',
+        objectFit: 'cover', marginBottom: '6px',
+        background: 'rgba(255,255,255,.05)'
+      });
+      icon.src = brush.icon || DEFAULT_BRUSH_ICON;
+      item.appendChild(icon);
+      item.appendChild(styled('div', {
+        fontSize: '11px', color: '#ccc', textAlign: 'center', userSelect: 'none'
+      }, brush.name));
+      grid.appendChild(item);
+    });
+    content.appendChild(grid);
+  } else {
+    var preset = brushPresets.find(function (b) { return b.id === brushType; });
+    if (!preset) return;
+    content.appendChild(sectionLabel('当前画笔: ' + preset.name));
+    content.appendChild(sliderControl('流量', 0, 100, brushFlow, function (v) {
+      brushFlow = v;
+    }).row);
+    content.appendChild(sliderControl('硬度', 0, 100, brushHardness, function (v) {
+      brushHardness = v;
+    }).row);
+    content.appendChild(sliderControl('间距', 1, 100, brushSpacing, function (v) {
+      brushSpacing = v;
+    }).row);
+    content.appendChild(sectionLabel('来源: ' + preset.author));
+  }
 }
 
 function switchToBrush(id) {
-var preset = brushPresets.find(function(b) { return b.id === id; });
-if (!preset) return;
-
-brushType = id;
-
-if (id === 'highlighter') {
-highlighterWidth = preset.defaultWidth;
-highlighterOpacity = preset.defaultOpacity;
-} else {
-penWidth = preset.defaultWidth;
-penOpacity = preset.defaultOpacity;
-}
-
-brushFlow = preset.flow;
-brushHardness = preset.hardness;
-brushSpacing = preset.spacing;
-
-updateBrushTabContent();
-updateBrushSliders();
-toast('\u5DF2\u5207\u6362\u5230: ' + preset.name);
+  var preset = brushPresets.find(function (b) { return b.id === id; });
+  if (!preset) return;
+  brushType = id;
+  if (id === 'highlighter') {
+    highlighterWidth = preset.defaultWidth;
+    highlighterOpacity = preset.defaultOpacity;
+  } else {
+    penWidth = preset.defaultWidth;
+    penOpacity = preset.defaultOpacity;
+  }
+  brushFlow = preset.flow;
+  brushHardness = preset.hardness;
+  brushSpacing = preset.spacing;
+  updateBrushTabContent();
+  updateBrushSliders();
+  toast('已切换到: ' + preset.name);
 }
 
 function updateBrushSliders() {
-var sliders = document.querySelectorAll('#stg-brush-settings input[type="range"]');
-if (sliders.length < 2) return;
-var sizeSlider = sliders[0];
-var opacitySlider = sliders[1];
-if (sizeSlider) {
-var w = getCurrentBrushWidth();
-sizeSlider.value = w;
-var sizeVal = sizeSlider.parentNode.querySelector('div div');
-if (sizeVal) sizeVal.textContent = Math.round(w);
-}
-if (opacitySlider) {
-var o = getCurrentBrushOpacity() * 100;
-opacitySlider.value = o;
-var opVal = opacitySlider.parentNode.querySelector('div div');
-if (opVal) opVal.textContent = Math.round(o);
-}
+  if (!brushSizeControl || !brushOpacityControl) return;
+  var width = getCurrentBrushWidth();
+  var opacity = getCurrentBrushOpacity() * 100;
+  brushSizeControl.input.value = width;
+  brushSizeControl.output.textContent = Math.round(width);
+  brushOpacityControl.input.value = opacity;
+  brushOpacityControl.output.textContent = Math.round(opacity);
 }
 
 function toggleBrushSettings() {
-var panel = document.getElementById('stg-brush-settings');
-if (!panel) return;
-if (panel.style.display === 'block') {
-panel.style.display = 'none';
-} else {
-panel.style.display = 'block';
-updateBrushSliders();
-updateBrushTabContent();
-}
+  var panel = byId('stg-brush-settings');
+  if (!panel) return;
+  if (panel.style.display === 'block') panel.style.display = 'none';
+  else {
+    panel.style.display = 'block';
+    updateBrushSliders();
+    updateBrushTabContent();
+  }
 }
 
 function hideBrushSettings() {
-var panel = document.getElementById('stg-brush-settings');
-if (panel) panel.style.display = 'none';
+  hideElement('stg-brush-settings');
 }
 
-function makeBrushSlider(label, min, max, val, onChange) {
-var row = document.createElement('div');
-row.style.marginBottom = '10px';
-
-var labelDiv = document.createElement('div');
-labelDiv.style.fontSize = '10px';
-labelDiv.style.color = '#888';
-labelDiv.style.marginBottom = '4px';
-labelDiv.style.userSelect = 'none';
-labelDiv.textContent = label;
-row.appendChild(labelDiv);
-
-var sliderWrap = document.createElement('div');
-sliderWrap.style.display = 'flex';
-sliderWrap.style.alignItems = 'center';
-sliderWrap.style.gap = '8px';
-
-var slider = document.createElement('input');
-slider.type = 'range';
-slider.min = min;
-slider.max = max;
-slider.value = val;
-slider.style.flex = '1';
-slider.style.cursor = 'pointer';
-sliderWrap.appendChild(slider);
-
-var valWrap = document.createElement('div');
-valWrap.style.width = '32px';
-valWrap.style.textAlign = 'right';
-valWrap.style.flexShrink = '0';
-
-var valTxt = document.createElement('div');
-valTxt.textContent = Math.round(val);
-valTxt.style.fontSize = '11px';
-valTxt.style.color = '#ccc';
-valTxt.style.userSelect = 'none';
-valWrap.appendChild(valTxt);
-
-sliderWrap.appendChild(valWrap);
-row.appendChild(sliderWrap);
-
-slider.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-
-slider.addEventListener('input', function (e) {
-e.stopPropagation();
-var v = parseFloat(slider.value);
-valTxt.textContent = Math.round(v);
-onChange(v);
-});
-
-slider.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-
-return row;
-}
-
-function makeDetailSlider(label, min, max, val, onChange) {
-var row = document.createElement('div');
-row.style.marginBottom = '10px';
-
-var labelDiv = document.createElement('div');
-labelDiv.style.fontSize = '10px';
-labelDiv.style.color = '#888';
-labelDiv.style.marginBottom = '4px';
-labelDiv.style.userSelect = 'none';
-labelDiv.textContent = label;
-row.appendChild(labelDiv);
-
-var sliderWrap = document.createElement('div');
-sliderWrap.style.display = 'flex';
-sliderWrap.style.alignItems = 'center';
-sliderWrap.style.gap = '8px';
-
-var slider = document.createElement('input');
-slider.type = 'range';
-slider.min = min;
-slider.max = max;
-slider.value = val;
-slider.style.flex = '1';
-slider.style.cursor = 'pointer';
-sliderWrap.appendChild(slider);
-
-var valTxt = document.createElement('div');
-valTxt.textContent = Math.round(val);
-valTxt.style.fontSize = '11px';
-valTxt.style.color = '#ccc';
-valTxt.style.width = '32px';
-valTxt.style.textAlign = 'right';
-valTxt.style.userSelect = 'none';
-sliderWrap.appendChild(valTxt);
-
-row.appendChild(sliderWrap);
-
-slider.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-});
-
-slider.addEventListener('input', function (e) {
-e.stopPropagation();
-var v = parseFloat(slider.value);
-valTxt.textContent = Math.round(v);
-onChange(v);
-});
-
-slider.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
-
-return row;
-}
+/* ---------- 调色板 ---------- */
 
 function makePalette() {
-if (document.getElementById('stg-palette')) return;
-var panel = document.createElement('div');
-panel.id = 'stg-palette';
-panel.style.position = 'fixed';
-panel.style.left = '60px';
-panel.style.top = '50%';
-panel.style.transform = 'translateY(-50%)';
-panel.style.background = 'rgba(30,30,30,0.95)';
-panel.style.borderRadius = '16px';
-panel.style.border = '2px solid rgba(255,133,157,0.4)';
-panel.style.padding = '12px';
-panel.style.zIndex = '9999999';
-panel.style.display = 'none';
-panel.style.maxHeight = '90vh';
-panel.style.overflowY = 'auto';
+  if (byId('stg-palette')) return;
+  var panel = makePanel('stg-palette');
+  panel.style.maxHeight = '90vh';
+  panel.appendChild(sectionLabel('基本色'));
 
-var colors = [
-'#ff0000','#ff6600','#ffcc00','#33cc00',
-'#00cccc','#0066ff','#6633ff','#cc00cc',
-'#ff3366','#996633','#ffffff','#888888',
-'#ff9999','#ffcc99','#99ff99','#99ccff'
-];
+  var grid = styled('div', {
+    display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+    gap: '6px', marginBottom: '12px'
+  });
+  [
+    '#ff0000', '#ff6600', '#ffcc00', '#33cc00',
+    '#00cccc', '#0066ff', '#6633ff', '#cc00cc',
+    '#ff3366', '#996633', '#ffffff', '#000000',
+    '#ff9999', '#ffcc99', '#99ff99', '#99ccff'
+  ].forEach(function (color) {
+    var cell = styled('div', {
+      width: '24px', height: '24px', borderRadius: '50%',
+      background: color, border: '2px solid rgba(255,255,255,.15)',
+      boxSizing: 'border-box', cursor: 'pointer'
+    });
+    cell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      applyColor(color);
+      syncPaletteFromColor(color);
+    });
+    grid.appendChild(cell);
+  });
+  panel.appendChild(grid);
+  panel.appendChild(sectionLabel('记忆色'));
 
-var labelPreset = document.createElement('div');
-labelPreset.textContent = '基本色';
-labelPreset.style.fontSize = '10px';
-labelPreset.style.color = '#888';
-labelPreset.style.marginBottom = '6px';
-labelPreset.style.userSelect = 'none';
-panel.appendChild(labelPreset);
+  var recent = styled('div', {
+    display: 'flex', gap: '6px', marginBottom: '12px'
+  });
+  recent.id = 'stg-recent-colors';
+  recent.addEventListener('click', function (e) {
+    var cell = e.target.closest('[data-recent-color]');
+    if (!cell) return;
+    e.stopPropagation();
+    var color = cell.getAttribute('data-recent-color');
+    applyColor(color);
+    syncPaletteFromColor(color);
+  });
+  panel.appendChild(recent);
 
-var grid = document.createElement('div');
-grid.style.display = 'grid';
-grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-grid.style.gap = '6px';
-grid.style.marginBottom = '12px';
+  var wrap = styled('div', {
+    position: 'relative', width: '180px', height: '180px',
+    margin: '0 auto 12px'
+  });
+  var ring = styled('canvas', {
+    position: 'absolute', left: '0', top: '0',
+    width: '180px', height: '180px', touchAction: 'none'
+  });
+  ring.width = 180;
+  ring.height = 180;
+  wrap.appendChild(ring);
 
-for (var i = 0; i < colors.length; i++) {
-var cell = document.createElement('div');
-cell.setAttribute('data-preset-color', colors[i]);
-cell.style.width = '24px';
-cell.style.height = '24px';
-cell.style.borderRadius = '50%';
-cell.style.background = colors[i];
-cell.style.border = '2px solid transparent';
-cell.style.boxSizing = 'border-box';
-cell.style.cursor = 'pointer';
-cell.style.transition = 'transform 0.15s ease, border-color 0.15s ease';
-grid.appendChild(cell);
+  var square = styled('canvas', {
+    position: 'absolute', left: '40px', top: '40px',
+    width: '100px', height: '100px', touchAction: 'none'
+  });
+  square.width = 100;
+  square.height = 100;
+  wrap.appendChild(square);
+
+  function cursor() {
+    return styled('div', {
+      position: 'absolute', width: '10px', height: '10px',
+      border: '2px solid white', borderRadius: '50%',
+      boxSizing: 'border-box', boxShadow: '0 0 0 1px #333',
+      pointerEvents: 'none', transform: 'translate(-50%,-50%)'
+    });
+  }
+  var ringCursor = cursor();
+  var squareCursor = cursor();
+  wrap.appendChild(ringCursor);
+  wrap.appendChild(squareCursor);
+  panel.appendChild(wrap);
+  panel.appendChild(sectionLabel('HSV 调整'));
+
+  var controls = {};
+  ['H', 'S', 'V'].forEach(function (key) {
+    var control = sliderControl(
+      key, 0, key === 'H' ? 360 : 100,
+      key === 'H' ? paletteH : (key === 'S' ? paletteS : paletteV) * 100,
+      function (value) {
+        if (key === 'H') paletteH = value;
+        if (key === 'S') paletteS = value / 100;
+        if (key === 'V') paletteV = value / 100;
+        previewColorFromHSV();
+        renderPaletteState();
+      }
+    );
+    control.input.addEventListener('change', function () {
+      confirmColorFromHSV();
+    });
+    controls[key] = control;
+    panel.appendChild(control.row);
+  });
+
+  document.body.appendChild(panel);
+  paletteUI = {
+    ring: ring, square: square,
+    ringCursor: ringCursor, squareCursor: squareCursor,
+    controls: controls
+  };
+  drawRing(ring);
+  renderPaletteState();
+  updateRecentColorUI();
+
+  bindPalettePointer(ring, function (e) {
+    var rect = ring.getBoundingClientRect();
+    var x = (e.clientX - rect.left) * 180 / rect.width - 90;
+    var y = (e.clientY - rect.top) * 180 / rect.height - 90;
+    paletteH = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }, false);
+
+  bindPalettePointer(square, function (e) {
+    var rect = square.getBoundingClientRect();
+    paletteS = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    paletteV = 1 - clamp((e.clientY - rect.top) / rect.height, 0, 1);
+  }, true);
 }
 
-panel.appendChild(grid);
-
-grid.addEventListener('click', function (e) {
-e.preventDefault();
-e.stopPropagation();
-var cell = e.target.closest('[data-preset-color]');
-if (!cell) return;
-var newColor = cell.getAttribute('data-preset-color');
-applyColor(newColor);
-});
-
-var labelRecent = document.createElement('div');
-labelRecent.textContent = '记忆色';
-labelRecent.style.fontSize = '10px';
-labelRecent.style.color = '#888';
-labelRecent.style.marginBottom = '6px';
-labelRecent.style.userSelect = 'none';
-panel.appendChild(labelRecent);
-
-var recentRow = document.createElement('div');
-recentRow.id = 'stg-recent-colors';
-recentRow.style.display = 'flex';
-recentRow.style.gap = '6px';
-recentRow.style.marginBottom = '12px';
-panel.appendChild(recentRow);
-
-recentRow.addEventListener('click', function (e) {
-e.preventDefault();
-e.stopPropagation();
-var cell = e.target.closest('[data-recent-color]');
-if (!cell) return;
-var newColor = cell.getAttribute('data-recent-color');
-applyColor(newColor);
-});
-
-updateRecentColorUI();
-
-var ringWrap = document.createElement('div');
-ringWrap.style.position = 'relative';
-ringWrap.style.width = '180px';
-ringWrap.style.height = '180px';
-ringWrap.style.margin = '0 auto 12px';
-
-var ringCv = document.createElement('canvas');
-ringCv.width = 180;
-ringCv.height = 180;
-ringCv.style.position = 'absolute';
-ringCv.style.top = '0';
-ringCv.style.left = '0';
-ringCv.style.borderRadius = '50%';
-ringCv.style.touchAction = 'none';
-ringWrap.appendChild(ringCv);
-
-var ringCursor = document.createElement('div');
-ringCursor.id = 'stg-ring-cursor';
-ringCursor.style.position = 'absolute';
-ringCursor.style.width = '10px';
-ringCursor.style.height = '10px';
-ringCursor.style.border = '2px solid white';
-ringCursor.style.borderRadius = '50%';
-ringCursor.style.boxSizing = 'border-box';
-ringCursor.style.pointerEvents = 'none';
-ringCursor.style.display = 'none';
-ringWrap.appendChild(ringCursor);
-
-var sqCv = document.createElement('canvas');
-sqCv.width = 100;
-sqCv.height = 100;
-sqCv.style.position = 'absolute';
-sqCv.style.top = '40px';
-sqCv.style.left = '40px';
-sqCv.style.borderRadius = '4px';
-sqCv.style.touchAction = 'none';
-ringWrap.appendChild(sqCv);
-
-var sqCursor = document.createElement('div');
-sqCursor.id = 'stg-sq-cursor';
-sqCursor.style.position = 'absolute';
-sqCursor.style.width = '10px';
-sqCursor.style.height = '10px';
-sqCursor.style.border = '2px solid white';
-sqCursor.style.borderRadius = '50%';
-sqCursor.style.boxSizing = 'border-box';
-sqCursor.style.pointerEvents = 'none';
-sqCursor.style.display = 'none';
-ringWrap.appendChild(sqCursor);
-
-panel.appendChild(ringWrap);
-
-drawRing(ringCv);
-drawSquare(sqCv, paletteH);
-
-var ringDown = false;
-var sqDown = false;
-
-ringCv.addEventListener('pointerdown', function (e) {
-e.preventDefault();
-e.stopPropagation();
-ringDown = true;
-ringCv.setPointerCapture(e.pointerId);
-pickRing(ringCv, sqCv, ringCursor, e, false);
-});
-ringCv.addEventListener('pointermove', function (e) {
-if (!ringDown) return;
-e.preventDefault();
-e.stopPropagation();
-pickRing(ringCv, sqCv, ringCursor, e, false);
-});
-ringCv.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-if (ringDown) {
-pickRing(ringCv, sqCv, ringCursor, e, true);
-}
-ringDown = false;
-if (ringCv.hasPointerCapture(e.pointerId)) {
-ringCv.releasePointerCapture(e.pointerId);
-}
-});
-ringCv.addEventListener('pointercancel', function (e) {
-e.stopPropagation();
-ringDown = false;
-if (ringCv.hasPointerCapture(e.pointerId)) {
-ringCv.releasePointerCapture(e.pointerId);
-}
-});
-
-sqCv.addEventListener('pointerdown', function (e) {
-e.preventDefault();
-e.stopPropagation();
-sqDown = true;
-sqCv.setPointerCapture(e.pointerId);
-pickSquare(sqCv, sqCursor, e, false);
-});
-sqCv.addEventListener('pointermove', function (e) {
-if (!sqDown) return;
-e.preventDefault();
-e.stopPropagation();
-pickSquare(sqCv, sqCursor, e, false);
-});
-sqCv.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-if (sqDown) {
-pickSquare(sqCv, sqCursor, e, true);
-}
-sqDown = false;
-if (sqCv.hasPointerCapture(e.pointerId)) {
-sqCv.releasePointerCapture(e.pointerId);
-}
-});
-sqCv.addEventListener('pointercancel', function (e) {
-e.stopPropagation();
-sqDown = false;
-if (sqCv.hasPointerCapture(e.pointerId)) {
-sqCv.releasePointerCapture(e.pointerId);
-}
-});
-
-var labelHSV = document.createElement('div');
-labelHSV.textContent = 'HSV 调整';
-labelHSV.style.fontSize = '10px';
-labelHSV.style.color = '#888';
-labelHSV.style.marginBottom = '6px';
-labelHSV.style.userSelect = 'none';
-panel.appendChild(labelHSV);
-
-var hRow = makeSlider('H', 0, 360, paletteH, function (v) {
-paletteH = v;
-drawSquare(sqCv, paletteH);
-previewColorFromHSV();
-updateSquareCursor(sqCursor);
-});
-panel.appendChild(hRow);
-
-var sRow = makeSlider('S', 0, 100, paletteS * 100, function (v) {
-paletteS = v / 100;
-previewColorFromHSV();
-updateSquareCursor(sqCursor);
-});
-panel.appendChild(sRow);
-
-var vRow = makeSlider('V', 0, 100, paletteV * 100, function (v) {
-paletteV = v / 100;
-previewColorFromHSV();
-updateSquareCursor(sqCursor);
-});
-panel.appendChild(vRow);
-
-document.body.appendChild(panel);
-
-console.log('[STG] 调色板已创建');
+function bindPalettePointer(element, update, confirmOnRelease) {
+  var pointer = null;
+  element.addEventListener('pointerdown', function (e) {
+    if (pointer !== null) return;
+    if (element === paletteUI.ring) {
+      var rect = element.getBoundingClientRect();
+      var x = (e.clientX - rect.left) * 180 / rect.width - 90;
+      var y = (e.clientY - rect.top) * 180 / rect.height - 90;
+      var distance = Math.sqrt(x * x + y * y);
+      if (distance < 68 || distance > 90) return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    pointer = e.pointerId;
+    element.setPointerCapture(pointer);
+    update(e);
+    previewColorFromHSV();
+    renderPaletteState();
+  });
+  element.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== pointer) return;
+    e.preventDefault();
+    e.stopPropagation();
+    update(e);
+    previewColorFromHSV();
+    renderPaletteState();
+  });
+  element.addEventListener('pointerup', function (e) {
+    if (e.pointerId !== pointer) return;
+    e.stopPropagation();
+    update(e);
+    previewColorFromHSV();
+    renderPaletteState();
+    pointer = null;
+    if (confirmOnRelease) confirmColorFromHSV();
+  });
+  element.addEventListener('pointercancel', function () { pointer = null; });
+  element.addEventListener('lostpointercapture', function () { pointer = null; });
 }
 
-function makeSlider(label, min, max, val, onChange) {
-var row = document.createElement('div');
-row.style.display = 'flex';
-row.style.alignItems = 'center';
-row.style.gap = '8px';
-row.style.marginBottom = '6px';
-
-var lbl = document.createElement('div');
-lbl.textContent = label;
-lbl.style.fontSize = '11px';
-lbl.style.color = '#aaa';
-lbl.style.width = '12px';
-lbl.style.userSelect = 'none';
-row.appendChild(lbl);
-
-var slider = document.createElement('input');
-slider.type = 'range';
-slider.min = min;
-slider.max = max;
-slider.value = val;
-slider.style.flex = '1';
-slider.style.height = '4px';
-slider.style.cursor = 'pointer';
-row.appendChild(slider);
-
-var valTxt = document.createElement('div');
-valTxt.textContent = Math.round(val);
-valTxt.style.fontSize = '11px';
-valTxt.style.color = '#ccc';
-valTxt.style.width = '28px';
-valTxt.style.textAlign = 'right';
-valTxt.style.userSelect = 'none';
-row.appendChild(valTxt);
-
-var sliderDragging = false;
-
-slider.addEventListener('pointerdown', function (e) {
-e.stopPropagation();
-sliderDragging = true;
-});
-
-slider.addEventListener('input', function (e) {
-e.stopPropagation();
-var v = parseFloat(slider.value);
-valTxt.textContent = Math.round(v);
-onChange(v);
-});
-
-slider.addEventListener('pointerup', function (e) {
-e.stopPropagation();
-if (sliderDragging) {
-confirmColorFromHSV();
+function renderPaletteState() {
+  if (!paletteUI) return;
+  drawSquare(paletteUI.square, paletteH);
+  var radians = paletteH * Math.PI / 180;
+  paletteUI.ringCursor.style.left = (90 + 79 * Math.cos(radians)) + 'px';
+  paletteUI.ringCursor.style.top = (90 + 79 * Math.sin(radians)) + 'px';
+  paletteUI.squareCursor.style.left = (40 + paletteS * 100) + 'px';
+  paletteUI.squareCursor.style.top = (40 + (1 - paletteV) * 100) + 'px';
+  var values = {H: paletteH, S: paletteS * 100, V: paletteV * 100};
+  Object.keys(values).forEach(function (key) {
+    paletteUI.controls[key].input.value = values[key];
+    paletteUI.controls[key].output.textContent = Math.round(values[key]);
+  });
 }
-sliderDragging = false;
-});
 
-slider.addEventListener('pointermove', function (e) {
-e.stopPropagation();
-});
+function syncPaletteFromColor(hex) {
+  if (!validColor(hex)) return;
+  var r = parseInt(hex.slice(1, 3), 16) / 255;
+  var g = parseInt(hex.slice(3, 5), 16) / 255;
+  var b = parseInt(hex.slice(5, 7), 16) / 255;
+  var max = Math.max(r, g, b);
+  var min = Math.min(r, g, b);
+  var delta = max - min;
+  if (delta > 0) {
+    var hue;
+    if (max === r) hue = ((g - b) / delta) % 6;
+    else if (max === g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    paletteH = (hue * 60 + 360) % 360;
+  }
+  paletteS = max === 0 ? 0 : delta / max;
+  paletteV = max;
+  renderPaletteState();
+}
 
-return row;
+function updateColorIndicator() {
+  var indicator = byId('stg-color-indicator');
+  if (indicator) indicator.style.background = penColor;
 }
 
 function previewColor(color) {
-penColor = color;
-updateColorIndicator();
+  if (!validColor(color)) return;
+  penColor = color;
+  updateColorIndicator();
 }
 
 function applyColor(color) {
-penColor = color;
-addRecentColor(color);
-updateColorIndicator();
-toast('已选择: ' + color);
+  if (!validColor(color)) return;
+  previewColor(color);
+  addRecentColor(color);
+  toast('已选择: ' + color);
 }
 
 function previewColorFromHSV() {
-var rgb = hsvToRgb(paletteH, paletteS, paletteV);
-var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
-previewColor(hex);
+  var rgb = hsvToRgb(paletteH, paletteS, paletteV);
+  previewColor(rgbToHex(rgb[0], rgb[1], rgb[2]));
 }
 
 function confirmColorFromHSV() {
-var rgb = hsvToRgb(paletteH, paletteS, paletteV);
-var hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
-applyColor(hex);
+  var rgb = hsvToRgb(paletteH, paletteS, paletteV);
+  applyColor(rgbToHex(rgb[0], rgb[1], rgb[2]));
 }
 
-function updateSquareCursor(sqCursor) {
-sqCursor.style.display = 'block';
-sqCursor.style.left = (40 + paletteS * 100 - 5) + 'px';
-sqCursor.style.top = (40 + (1 - paletteV) * 100 - 5) + 'px';
+function drawRing(canvas) {
+  var context = canvas.getContext('2d');
+  context.clearRect(0, 0, 180, 180);
+  for (var angle = 0; angle < 360; angle++) {
+    var start = (angle - 0.5) * Math.PI / 180;
+    var end = (angle + 1.5) * Math.PI / 180;
+    context.beginPath();
+    context.arc(90, 90, 88, start, end);
+    context.arc(90, 90, 68, end, start, true);
+    context.closePath();
+    context.fillStyle = 'hsl(' + angle + ',100%,50%)';
+    context.fill();
+  }
 }
 
-function drawRing(cv) {
-var ctx = cv.getContext('2d');
-var cx = 90;
-var cy = 90;
-var outerR = 88;
-var innerR = 68;
-ctx.clearRect(0, 0, 180, 180);
-for (var angle = 0; angle < 360; angle++) {
-var rad1 = (angle - 0.5) * Math.PI / 180;
-var rad2 = (angle + 1.5) * Math.PI / 180;
-ctx.beginPath();
-ctx.arc(cx, cy, outerR, rad1, rad2);
-ctx.arc(cx, cy, innerR, rad2, rad1, true);
-ctx.closePath();
-ctx.fillStyle = 'hsl(' + angle + ',100%,50%)';
-ctx.fill();
-}
-}
-
-function drawSquare(cv, hue) {
-var ctx = cv.getContext('2d');
-var w = cv.width;
-var h = cv.height;
-ctx.clearRect(0, 0, w, h);
-for (var x = 0; x < w; x++) {
-var sat = x / w;
-for (var y = 0; y < h; y++) {
-var val = 1 - y / h;
-var rgb = hsvToRgb(hue, sat, val);
-ctx.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-ctx.fillRect(x, y, 1, 1);
-}
-}
-}
-
-function pickRing(ringCv, sqCv, ringCursor, e, confirm) {
-var rect = ringCv.getBoundingClientRect();
-var x = e.clientX - rect.left - 90;
-var y = e.clientY - rect.top - 90;
-var dist = Math.sqrt(x * x + y * y);
-if (dist < 60 || dist > 90) return;
-var angle = Math.atan2(y, x) * 180 / Math.PI;
-if (angle < 0) angle += 360;
-paletteH = angle;
-drawSquare(sqCv, paletteH);
-
-var rad = angle * Math.PI / 180;
-var cursorDist = 79;
-ringCursor.style.display = 'block';
-ringCursor.style.left = (90 + cursorDist * Math.cos(rad) - 5) + 'px';
-ringCursor.style.top = (90 + cursorDist * Math.sin(rad) - 5) + 'px';
-
-if (confirm) {
-confirmColorFromHSV();
-} else {
-previewColorFromHSV();
-}
-}
-
-function pickSquare(sqCv, sqCursor, e, confirm) {
-var rect = sqCv.getBoundingClientRect();
-var x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-var y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
-paletteS = x / rect.width;
-paletteV = 1 - y / rect.height;
-
-sqCursor.style.display = 'block';
-sqCursor.style.left = (40 + x - 5) + 'px';
-sqCursor.style.top = (40 + y - 5) + 'px';
-
-if (confirm) {
-confirmColorFromHSV();
-} else {
-previewColorFromHSV();
-}
+function drawSquare(canvas, hue) {
+  var context = canvas.getContext('2d');
+  var width = canvas.width;
+  var height = canvas.height;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = 'hsl(' + hue + ',100%,50%)';
+  context.fillRect(0, 0, width, height);
+  var white = context.createLinearGradient(0, 0, width, 0);
+  white.addColorStop(0, '#fff');
+  white.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = white;
+  context.fillRect(0, 0, width, height);
+  var black = context.createLinearGradient(0, 0, 0, height);
+  black.addColorStop(0, 'rgba(0,0,0,0)');
+  black.addColorStop(1, '#000');
+  context.fillStyle = black;
+  context.fillRect(0, 0, width, height);
 }
 
 function hsvToRgb(h, s, v) {
-h = h / 360;
-var i = Math.floor(h * 6);
-var f = h * 6 - i;
-var p = v * (1 - s);
-var q = v * (1 - f * s);
-var u = v * (1 - (1 - f) * s);
-var r = 0;
-var g = 0;
-var b = 0;
-switch (i % 6) {
-case 0: r = v; g = u; b = p; break;
-case 1: r = q; g = v; b = p; break;
-case 2: r = p; g = v; b = u; break;
-case 3: r = p; g = q; b = v; break;
-case 4: r = u; g = p; b = v; break;
-case 5: r = v; g = p; b = q; break;
-}
-return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  h = ((h % 360) + 360) % 360 / 60;
+  var i = Math.floor(h);
+  var f = h - i;
+  var p = v * (1 - s);
+  var q = v * (1 - f * s);
+  var u = v * (1 - (1 - f) * s);
+  var values = [
+    [v, u, p], [q, v, p], [p, v, u],
+    [p, q, v], [u, p, v], [v, p, q]
+  ][i];
+  return values.map(function (value) { return Math.round(value * 255); });
 }
 
 function rgbToHex(r, g, b) {
-return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
+/* ---------- 工具切换 ---------- */
+
 function enterDraw() {
-drawing = true;
-tool = 'brush';
-var fab = document.getElementById('stg-fab');
-if (fab) fab.style.display = 'none';
-var bar = document.getElementById('stg-toolbar');
-if (bar) bar.classList.add('stg-show');
-hilite();
-var msgs = document.querySelectorAll('#chat .mes');
-for (var i = 0; i < msgs.length; i++) {
-setupCanvas(msgs[i]);
-}
+  drawing = true;
+  tool = 'brush';
+  hideElement('stg-fab');
+  var bar = byId('stg-toolbar');
+  if (bar) bar.classList.add('stg-show');
+  hilite();
+  var messages = document.querySelectorAll('#chat .mes');
+  for (var i = 0; i < messages.length; i++) setupCanvas(messages[i]);
 }
 
 function exitDraw() {
-drawing = false;
-pressing = false;
-lastCanvas = null;
-currentStroke = null;
-shapeDrawing = false;
-deactivateEyedropper();
-var pp = document.getElementById('stg-palette');
-if (pp) pp.style.display = 'none';
-hideBrushSettings();
-var um = document.getElementById('stg-utility-menu');
-if (um) um.style.display = 'none';
-hideShapeToolbar();
-var bar = document.getElementById('stg-toolbar');
-if (bar) bar.classList.remove('stg-show');
-var fab = document.getElementById('stg-fab');
-if (fab) fab.style.display = 'flex';
-var all = document.querySelectorAll('.stg-canvas');
-for (var i = 0; i < all.length; i++) {
-all[i].classList.remove('stg-active');
-}
+  drawing = false;
+  deactivateEyedropper(false);
+  pressing = false;
+  lastCanvas = null;
+  currentStroke = null;
+  shapeDrawing = false;
+  hideElement('stg-palette');
+  hideBrushSettings();
+  hideElement('stg-utility-menu');
+  hideShapeToolbar();
+  var bar = byId('stg-toolbar');
+  if (bar) bar.classList.remove('stg-show');
+  var fab = byId('stg-fab');
+  if (fab) fab.style.display = 'flex';
+  updatePointer();
+  Array.prototype.forEach.call(
+    document.querySelectorAll('.stg-shape-preview'),
+    function (element) { element.remove(); }
+  );
 }
 
-function onTool(act) {
-if (act === 'exit') { exitDraw(); return; }
-if (act === 'save') { saveData(); return; }
-if (act === 'clear') { clearAll(); return; }
-if (act === 'undo') { undo(); return; }
-if (act === 'redo') { redo(); return; }
-if (act === 'utility') {
-hideBrushSettings();
-var pp = document.getElementById('stg-palette');
-if (pp) pp.style.display = 'none';
-var um = document.getElementById('stg-utility-menu');
-if (um) {
-if (um.style.display === 'flex') {
-um.style.display = 'none';
-} else {
-um.style.display = 'flex';
-}
-}
-return;
-}
-if (act === 'color') {
-hideBrushSettings();
-var um2 = document.getElementById('stg-utility-menu');
-if (um2) um2.style.display = 'none';
-var pp2 = document.getElementById('stg-palette');
-if (pp2) {
-if (pp2.style.display === 'block') {
-pp2.style.display = 'none';
-} else {
-pp2.style.display = 'block';
-}
-}
-return;
-}
-if (act === 'brush') {
-if (tool === 'brush') {
-toggleBrushSettings();
-} else {
-tool = 'brush';
-hilite();
-updatePointer();
-hideBrushSettings();
-}
-var pp3 = document.getElementById('stg-palette');
-if (pp3) pp3.style.display = 'none';
-var um3 = document.getElementById('stg-utility-menu');
-if (um3) um3.style.display = 'none';
-return;
-}
-tool = act;
-hilite();
-updatePointer();
-hideBrushSettings();
-var pp4 = document.getElementById('stg-palette');
-if (pp4) pp4.style.display = 'none';
-var um4 = document.getElementById('stg-utility-menu');
-if (um4) um4.style.display = 'none';
+function onTool(action) {
+  if (eyedropper.active) deactivateEyedropper(false);
+  if (action === 'exit') { exitDraw(); return; }
+  if (action === 'save') { saveData(); return; }
+  if (action === 'clear') { clearAll(); return; }
+  if (action === 'undo') { undo(); return; }
+  if (action === 'redo') { redo(); return; }
+
+  if (action === 'utility') {
+    hideBrushSettings();
+    hideElement('stg-palette');
+    var menu = byId('stg-utility-menu');
+    if (menu) menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    return;
+  }
+  if (action === 'color') {
+    hideBrushSettings();
+    hideElement('stg-utility-menu');
+    var palette = byId('stg-palette');
+    if (palette) palette.style.display =
+      palette.style.display === 'block' ? 'none' : 'block';
+    return;
+  }
+  if (action === 'brush') {
+    if (tool === 'brush') toggleBrushSettings();
+    else {
+      tool = 'brush';
+      hilite();
+      updatePointer();
+      hideBrushSettings();
+    }
+    hideElement('stg-palette');
+    hideElement('stg-utility-menu');
+    return;
+  }
+  tool = action;
+  hilite();
+  updatePointer();
+  hideBrushSettings();
+  hideElement('stg-palette');
+  hideElement('stg-utility-menu');
 }
 
 function hilite() {
-var btns = document.querySelectorAll('.stg-btn');
-for (var i = 0; i < btns.length; i++) {
-var id = btns[i].getAttribute('data-stg');
-if (id === tool) {
-btns[i].classList.add('stg-on');
-} else {
-btns[i].classList.remove('stg-on');
-}
-}
+  var buttons = document.querySelectorAll('#stg-toolbar .stg-btn');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle(
+      'stg-on', buttons[i].getAttribute('data-stg') === tool
+    );
+  }
 }
 
 function updatePointer() {
-var all = document.querySelectorAll('.stg-canvas');
-for (var i = 0; i < all.length; i++) {
-if (tool === 'mouse' || tool === 'eyedropper' || !drawing) {
-all[i].classList.remove('stg-active');
-} else {
-all[i].classList.add('stg-active');
-}
-}
+  var canvases = document.querySelectorAll('#chat .stg-canvas');
+  var active = drawing && tool !== 'mouse' && tool !== 'eyedropper';
+  for (var i = 0; i < canvases.length; i++) {
+    canvases[i].classList.toggle('stg-active', active);
+  }
 }
 
-function setupCanvas(mesEl) {
-var mt = mesEl.querySelector('.mes_text');
-if (!mt) return null;
-var existing = mt.querySelector('.stg-canvas');
-if (existing) {
-if (drawing && tool !== 'mouse' && tool !== 'eyedropper') existing.classList.add('stg-active');
-return existing;
-}
-var cv = document.createElement('canvas');
-cv.className = 'stg-canvas';
-cv.width = mt.clientWidth || 300;
-cv.height = mt.clientHeight || 100;
-if (drawing && tool !== 'mouse' && tool !== 'eyedropper') cv.classList.add('stg-active');
-mt.appendChild(cv);
-bindCanvas(cv);
-return cv;
+/* ---------- 原有画笔与形状绘制 ---------- */
+
+function setupCanvas(message) {
+  var text = message.querySelector('.mes_text');
+  if (!text) return null;
+  var existing = text.querySelector('.stg-canvas');
+  var active = drawing && tool !== 'mouse' && tool !== 'eyedropper';
+  if (existing) {
+    existing.classList.toggle('stg-active', active);
+    return existing;
+  }
+  var canvas = document.createElement('canvas');
+  canvas.className = 'stg-canvas';
+  canvas.width = text.clientWidth || 300;
+  canvas.height = text.clientHeight || 100;
+  if (active) canvas.classList.add('stg-active');
+  text.appendChild(canvas);
+  bindCanvas(canvas);
+  return canvas;
 }
 
-function getMesId(cv) {
-var mes = cv.closest('.mes');
-return mes ? mes.getAttribute('mesid') : null;
+function getMesId(canvas) {
+  var message = canvas.closest('.mes');
+  return message ? message.getAttribute('mesid') : null;
 }
 
 function getToolWidth() {
-if (tool === 'eraser') return eraserWidth;
-if (tool === 'shape') return penWidth;
-if (brushType === 'highlighter') return highlighterWidth;
-return penWidth;
+  if (tool === 'eraser') return eraserWidth;
+  if (tool === 'shape') return penWidth;
+  return brushType === 'highlighter' ? highlighterWidth : penWidth;
 }
 
 function getToolOpacity() {
-if (tool === 'eraser') return 1.0;
-if (tool === 'shape') return penOpacity;
-if (brushType === 'highlighter') return highlighterOpacity;
-return penOpacity;
+  if (tool === 'eraser') return 1;
+  if (tool === 'shape') return penOpacity;
+  return brushType === 'highlighter' ? highlighterOpacity : penOpacity;
 }
 
-function setBrush(ctx) {
-ctx.lineCap = 'round';
-ctx.lineJoin = 'round';
-if (tool === 'eraser') {
-ctx.globalCompositeOperation = 'destination-out';
-ctx.globalAlpha = 1;
-ctx.strokeStyle = 'rgba(0,0,0,1)';
-ctx.lineWidth = eraserWidth;
-} else if (brushType === 'highlighter') {
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = highlighterOpacity;
-ctx.strokeStyle = penColor;
-ctx.lineWidth = highlighterWidth;
-} else {
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = penOpacity;
-ctx.strokeStyle = penColor;
-ctx.lineWidth = penWidth;
-}
+function setBrush(context) {
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.globalCompositeOperation =
+    tool === 'eraser' ? 'destination-out' : 'source-over';
+  context.globalAlpha = getToolOpacity();
+  context.strokeStyle = tool === 'eraser' ? '#000000' : penColor;
+  context.lineWidth = getToolWidth();
 }
 
-function setupBrushFor(ctx, stroke) {
-ctx.lineCap = 'round';
-ctx.lineJoin = 'round';
-if (stroke.tool === 'eraser') {
-ctx.globalCompositeOperation = 'destination-out';
-ctx.globalAlpha = 1;
-ctx.strokeStyle = 'rgba(0,0,0,1)';
-ctx.lineWidth = stroke.size;
-} else {
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = stroke.opacity || 1.0;
-ctx.strokeStyle = stroke.color;
-ctx.lineWidth = stroke.size;
-}
+function setupBrushFor(context, stroke) {
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.globalCompositeOperation =
+    stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+  var fallback = (
+    stroke.tool === 'highlighter' || stroke.brushType === 'highlighter'
+  ) ? 0.3 : 1;
+  context.globalAlpha = stroke.tool === 'eraser' ? 1 :
+    (typeof stroke.opacity === 'number' ? stroke.opacity : fallback);
+  context.strokeStyle = stroke.tool === 'eraser' ? '#000000' : stroke.color;
+  context.lineWidth = stroke.size;
 }
 
-function bindCanvas(cv) {
-var shapePreviewLayer = null;
+function bindCanvas(canvas) {
+  var shapePreviewLayer = null;
 
-cv.addEventListener('pointerdown', function (e) {
-if (!drawing || tool === 'mouse' || tool === 'eyedropper') return;
+  function removePreview() {
+    if (shapePreviewLayer && shapePreviewLayer.parentNode) {
+      shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
+    }
+    shapePreviewLayer = null;
+  }
 
-if (tool === 'shape' && shapeMode) {
-e.preventDefault();
-shapeDrawing = true;
-shapePreviewCanvas = cv;
-lastCanvas = cv;
-cv.setPointerCapture(e.pointerId);
-var pos = getPos(cv, e);
-shapeStartX = pos.x;
-shapeStartY = pos.y;
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!drawing || tool === 'mouse' || tool === 'eyedropper') return;
 
-if (!shapePreviewLayer) {
-shapePreviewLayer = document.createElement('canvas');
-shapePreviewLayer.className = 'stg-shape-preview';
-shapePreviewLayer.width = cv.width;
-shapePreviewLayer.height = cv.height;
-shapePreviewLayer.style.position = 'absolute';
-shapePreviewLayer.style.top = '0';
-shapePreviewLayer.style.left = '0';
-shapePreviewLayer.style.width = '100%';
-shapePreviewLayer.style.height = '100%';
-shapePreviewLayer.style.pointerEvents = 'none';
-shapePreviewLayer.style.zIndex = '15';
-cv.parentNode.appendChild(shapePreviewLayer);
-}
-return;
-}
+    if (tool === 'shape' && shapeMode) {
+      e.preventDefault();
+      shapeDrawing = true;
+      shapePreviewCanvas = canvas;
+      lastCanvas = canvas;
+      canvas.setPointerCapture(e.pointerId);
+      var start = getPos(canvas, e);
+      shapeStartX = start.x;
+      shapeStartY = start.y;
 
-e.preventDefault();
-pressing = true;
-lastCanvas = cv;
-cv.setPointerCapture(e.pointerId);
-var pos2 = getPos(cv, e);
-lastX = pos2.x;
-lastY = pos2.y;
-currentStroke = {
-tool: tool,
-brushType: brushType,
-color: penColor,
-size: getToolWidth(),
-opacity: getToolOpacity(),
-points: [{x: pos2.x / cv.width, y: pos2.y / cv.height}]
-};
-var ctx = cv.getContext('2d');
-setBrush(ctx);
-ctx.beginPath();
-ctx.moveTo(pos2.x, pos2.y);
-ctx.lineTo(pos2.x + 0.5, pos2.y + 0.5);
-ctx.stroke();
-});
+      removePreview();
+      shapePreviewLayer = styled('canvas', {
+        position: 'absolute', top: '0', left: '0',
+        width: '100%', height: '100%',
+        pointerEvents: 'none', zIndex: '15'
+      });
+      shapePreviewLayer.className = 'stg-shape-preview';
+      shapePreviewLayer.width = canvas.width;
+      shapePreviewLayer.height = canvas.height;
+      canvas.parentNode.appendChild(shapePreviewLayer);
+      return;
+    }
 
-cv.addEventListener('pointermove', function (e) {
-if (shapeDrawing && cv === shapePreviewCanvas && shapePreviewLayer) {
-e.preventDefault();
-var pos = getPos(cv, e);
-var previewCtx = shapePreviewLayer.getContext('2d');
-previewCtx.clearRect(0, 0, shapePreviewLayer.width, shapePreviewLayer.height);
-previewCtx.globalCompositeOperation = 'source-over';
-previewCtx.globalAlpha = penOpacity * 0.7;
-previewCtx.strokeStyle = penColor;
-previewCtx.lineWidth = penWidth;
-previewCtx.lineCap = 'round';
-previewCtx.lineJoin = 'round';
-previewCtx.setLineDash([5, 5]);
-drawShapePreview(previewCtx, shapeStartX, shapeStartY, pos.x, pos.y);
-previewCtx.setLineDash([]);
-return;
-}
+    e.preventDefault();
+    pressing = true;
+    lastCanvas = canvas;
+    canvas.setPointerCapture(e.pointerId);
+    var pos = getPos(canvas, e);
+    lastX = pos.x;
+    lastY = pos.y;
+    currentStroke = {
+      tool: tool,
+      brushType: brushType,
+      color: penColor,
+      size: getToolWidth(),
+      opacity: getToolOpacity(),
+      points: [{x: pos.x / canvas.width, y: pos.y / canvas.height}]
+    };
+    var context = canvas.getContext('2d');
+    setBrush(context);
+    context.beginPath();
+    context.moveTo(pos.x, pos.y);
+    context.lineTo(pos.x + 0.5, pos.y + 0.5);
+    context.stroke();
+  });
 
-if (!pressing || cv !== lastCanvas) return;
-e.preventDefault();
-var pos2 = getPos(cv, e);
-var ctx = cv.getContext('2d');
-setBrush(ctx);
-var dx = pos2.x - lastX;
-var dy = pos2.y - lastY;
-var dist = Math.sqrt(dx * dx + dy * dy);
-var steps = Math.max(1, Math.floor(dist / 2));
-for (var s = 0; s < steps; s++) {
-var t = s / steps;
-var ix = lastX + dx * t;
-var iy = lastY + dy * t;
-ctx.lineTo(ix, iy);
-}
-ctx.lineTo(pos2.x, pos2.y);
-ctx.stroke();
-ctx.beginPath();
-ctx.moveTo(pos2.x, pos2.y);
-lastX = pos2.x;
-lastY = pos2.y;
-if (currentStroke) {
-currentStroke.points.push({x: pos2.x / cv.width, y: pos2.y / cv.height});
-}
-});
+  canvas.addEventListener('pointermove', function (e) {
+    if (shapeDrawing && canvas === shapePreviewCanvas && shapePreviewLayer) {
+      e.preventDefault();
+      var shapePos = getPos(canvas, e);
+      var previewContext = shapePreviewLayer.getContext('2d');
+      previewContext.clearRect(0, 0, canvas.width, canvas.height);
+      previewContext.globalCompositeOperation = 'source-over';
+      previewContext.globalAlpha = penOpacity * 0.7;
+      previewContext.strokeStyle = penColor;
+      previewContext.lineWidth = penWidth;
+      previewContext.lineCap = 'round';
+      previewContext.lineJoin = 'round';
+      previewContext.setLineDash([5, 5]);
+      drawShapePreview(
+        previewContext, shapeStartX, shapeStartY, shapePos.x, shapePos.y
+      );
+      previewContext.setLineDash([]);
+      return;
+    }
 
-cv.addEventListener('pointerup', function (e) {
-if (shapeDrawing && cv === shapePreviewCanvas) {
-if (shapePreviewLayer) {
-shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
-shapePreviewLayer = null;
-}
-var pos = getPos(cv, e);
-drawShape(cv, shapeStartX, shapeStartY, pos.x, pos.y);
-shapeDrawing = false;
-shapePreviewCanvas = null;
-lastCanvas = null;
-if (cv.hasPointerCapture(e.pointerId)) {
-cv.releasePointerCapture(e.pointerId);
-}
-return;
-}
+    if (!pressing || canvas !== lastCanvas) return;
+    e.preventDefault();
+    var pos = getPos(canvas, e);
+    var context = canvas.getContext('2d');
+    setBrush(context);
+    var dx = pos.x - lastX;
+    var dy = pos.y - lastY;
+    var distance = Math.sqrt(dx * dx + dy * dy);
+    var steps = Math.max(1, Math.floor(distance / 2));
+    for (var s = 0; s < steps; s++) {
+      var fraction = s / steps;
+      context.lineTo(lastX + dx * fraction, lastY + dy * fraction);
+    }
+    context.lineTo(pos.x, pos.y);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(pos.x, pos.y);
+    lastX = pos.x;
+    lastY = pos.y;
+    if (currentStroke) {
+      currentStroke.points.push({
+        x: pos.x / canvas.width, y: pos.y / canvas.height
+      });
+    }
+  });
 
-if (pressing && currentStroke && lastCanvas) {
-var mid = getMesId(lastCanvas);
-if (mid !== null && currentStroke.points.length > 0) {
-if (!graffitiStore[mid]) {
-graffitiStore[mid] = {strokes: []};
-}
-saveHistory(mid);
-graffitiStore[mid].strokes.push(currentStroke);
-}
-}
-pressing = false;
-lastCanvas = null;
-currentStroke = null;
-});
+  canvas.addEventListener('pointerup', function (e) {
+    if (shapeDrawing && canvas === shapePreviewCanvas) {
+      removePreview();
+      var pos = getPos(canvas, e);
+      drawShape(canvas, shapeStartX, shapeStartY, pos.x, pos.y);
+      shapeDrawing = false;
+      shapePreviewCanvas = null;
+      lastCanvas = null;
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if (pressing && currentStroke && lastCanvas) {
+      var mid = getMesId(lastCanvas);
+      if (mid !== null && currentStroke.points.length > 0) {
+        if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
+        saveHistory(mid);
+        graffitiStore[mid].strokes.push(currentStroke);
+        lastEditedMid = mid;
+      }
+    }
+    pressing = false;
+    lastCanvas = null;
+    currentStroke = null;
+  });
 
-cv.addEventListener('pointercancel', function () {
-if (shapePreviewLayer) {
-shapePreviewLayer.parentNode.removeChild(shapePreviewLayer);
-shapePreviewLayer = null;
-}
-pressing = false;
-shapeDrawing = false;
-shapePreviewCanvas = null;
-lastCanvas = null;
-currentStroke = null;
-});
+  canvas.addEventListener('pointercancel', function () {
+    removePreview();
+    pressing = false;
+    shapeDrawing = false;
+    shapePreviewCanvas = null;
+    lastCanvas = null;
+    currentStroke = null
+      });
 }
 
-function drawShapePreview(ctx, x1, y1, x2, y2) {
-ctx.beginPath();
-if (shapeMode === 'line') {
-ctx.moveTo(x1, y1);
-ctx.lineTo(x2, y2);
-} else if (shapeMode === 'rect') {
-ctx.rect(x1, y1, x2 - x1, y2 - y1);
-} else if (shapeMode === 'ellipse') {
-var cx = (x1 + x2) / 2;
-var cy = (y1 + y2) / 2;
-var rx = Math.abs(x2 - x1) / 2;
-var ry = Math.abs(y2 - y1) / 2;
-ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-} else if (shapeMode === 'wave' || shapeMode === 'curve') {
-var dx = x2 - x1;
-var dy = y2 - y1;
-var len = Math.sqrt(dx * dx + dy * dy);
-var steps = Math.max(10, Math.floor(len / 5));
-ctx.moveTo(x1, y1);
-for (var i = 0; i <= steps; i++) {
-var t = i / steps;
-var ix = x1 + dx * t;
-var iy = y1 + dy * t;
-var offset = Math.sin(t * Math.PI * 3) * (len / 10);
-var perpX = -dy / len;
-var perpY = dx / len;
-var px = ix + perpX * offset;
-var py = iy + perpY * offset;
-ctx.lineTo(px, py);
-}
-}
-ctx.stroke();
+function getPos(canvas, e) {
+  var rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+  };
 }
 
-function drawShape(cv, x1, y1, x2, y2) {
-var ctx = cv.getContext('2d');
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = penOpacity;
-ctx.strokeStyle = penColor;
-ctx.lineWidth = penWidth;
-ctx.lineCap = 'round';
-ctx.lineJoin = 'round';
+/* 形状预览和最终绘制共用同一组点，避免两者位置不一致。 */
+function getShapePoints(mode, x1, y1, x2, y2) {
+  var points = [];
+  var dx = x2 - x1;
+  var dy = y2 - y1;
+  var length = Math.sqrt(dx * dx + dy * dy);
 
-var mid = getMesId(cv);
-if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
-saveHistory(mid);
+  if (mode === 'line') {
+    return [{x: x1, y: y1}, {x: x2, y: y2}];
+  }
 
-var pts = [];
-ctx.beginPath();
-if (shapeMode === 'line') {
-ctx.moveTo(x1, y1);
-ctx.lineTo(x2, y2);
-pts = [{x: x1 / cv.width, y: y1 / cv.height}, {x: x2 / cv.width, y: y2 / cv.height}];
-} else if (shapeMode === 'rect') {
-ctx.rect(x1, y1, x2 - x1, y2 - y1);
-pts = [
-{x: x1 / cv.width, y: y1 / cv.height},
-{x: x2 / cv.width, y: y1 / cv.height},
-{x: x2 / cv.width, y: y2 / cv.height},
-{x: x1 / cv.width, y: y2 / cv.height},
-{x: x1 / cv.width, y: y1 / cv.height}
-];
-} else if (shapeMode === 'ellipse') {
-var cx = (x1 + x2) / 2;
-var cy = (y1 + y2) / 2;
-var rx = Math.abs(x2 - x1) / 2;
-var ry = Math.abs(y2 - y1) / 2;
-ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-for (var a = 0; a <= 360; a += 10) {
-var rad = a * Math.PI / 180;
-pts.push({
-x: (cx + rx * Math.cos(rad)) / cv.width,
-y: (cy + ry * Math.sin(rad)) / cv.height
-});
-}
-} else if (shapeMode === 'wave' || shapeMode === 'curve') {
-var dx = x2 - x1;
-var dy = y2 - y1;
-var len = Math.sqrt(dx * dx + dy * dy);
-var steps = Math.max(10, Math.floor(len / 5));
-ctx.moveTo(x1, y1);
-for (var i = 0; i <= steps; i++) {
-var t = i / steps;
-var ix = x1 + dx * t;
-var iy = y1 + dy * t;
-var offset = Math.sin(t * Math.PI * 3) * (len / 10);
-var perpX = -dy / len;
-var perpY = dx / len;
-var px = ix + perpX * offset;
-var py = iy + perpY * offset;
-if (i === 0) {
-ctx.moveTo(px, py);
-} else {
-ctx.lineTo(px, py);
-}
-pts.push({x: px / cv.width, y: py / cv.height});
-}
-}
-ctx.stroke();
+  if (mode === 'rect') {
+    return [
+      {x: x1, y: y1},
+      {x: x2, y: y1},
+      {x: x2, y: y2},
+      {x: x1, y: y2},
+      {x: x1, y: y1}
+    ];
+  }
 
-if (pts.length > 0) {
-graffitiStore[mid].strokes.push({
-tool: 'shape',
-shapeMode: shapeMode,
-color: penColor,
-size: penWidth,
-opacity: penOpacity,
-points: pts
-});
+  if (mode === 'ellipse') {
+    var cx = (x1 + x2) / 2;
+    var cy = (y1 + y2) / 2;
+    var rx = Math.abs(dx) / 2;
+    var ry = Math.abs(dy) / 2;
+    for (var a = 0; a <= 360; a += 5) {
+      var radians = a * Math.PI / 180;
+      points.push({
+        x: cx + rx * Math.cos(radians),
+        y: cy + ry * Math.sin(radians)
+      });
+    }
+    return points;
+  }
+
+  /*
+   * 保留当前波浪线和曲线的生成方式。
+   * 曲线的可拖动控制点属于后续功能，本次不改交互。
+   */
+  if (mode === 'wave' || mode === 'curve') {
+    if (length < 0.001) return [{x: x1, y: y1}];
+
+    var steps = Math.max(10, Math.ceil(length / 5));
+    var perpendicularX = -dy / length;
+    var perpendicularY = dx / length;
+
+    for (var i = 0; i <= steps; i++) {
+      var fraction = i / steps;
+      var offset = Math.sin(fraction * Math.PI * 3) * (length / 10);
+      points.push({
+        x: x1 + dx * fraction + perpendicularX * offset,
+        y: y1 + dy * fraction + perpendicularY * offset
+      });
+    }
+  }
+
+  return points;
 }
+
+function strokePointPath(context, points) {
+  if (!points || points.length === 0) return;
+
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+
+  if (points.length === 1) {
+    context.lineTo(points[0].x + 0.5, points[0].y + 0.5);
+  } else {
+    for (var i = 1; i < points.length; i++) {
+      context.lineTo(points[i].x, points[i].y);
+    }
+  }
+
+  context.stroke();
+}
+
+function drawShapePreview(context, x1, y1, x2, y2) {
+  var points = getShapePoints(shapeMode, x1, y1, x2, y2);
+  strokePointPath(context, points);
+}
+
+function drawShape(canvas, x1, y1, x2, y2) {
+  var mid = getMesId(canvas);
+  if (mid === null) return;
+
+  var points = getShapePoints(shapeMode, x1, y1, x2, y2);
+  if (points.length === 0) return;
+
+  if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
+  saveHistory(mid);
+
+  var stroke = {
+    tool: 'shape',
+    shapeMode: shapeMode,
+    color: penColor,
+    size: penWidth,
+    opacity: penOpacity,
+    points: points.map(function (point) {
+      return {
+        x: point.x / canvas.width,
+        y: point.y / canvas.height
+      };
+    })
+  };
+
+  var context = canvas.getContext('2d');
+  setupBrushFor(context, stroke);
+  context.setLineDash([]);
+  strokePointPath(context, points);
+
+  graffitiStore[mid].strokes.push(stroke);
+  lastEditedMid = mid;
+}
+
+function redrawCanvas(canvas, data) {
+  var context = canvas.getContext('2d');
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  var strokes = data && Array.isArray(data.strokes) ? data.strokes : [];
+
+  for (var i = 0; i < strokes.length; i++) {
+    var stroke = strokes[i];
+    if (!stroke || !Array.isArray(stroke.points) || !stroke.points.length) {
+      continue;
+    }
+
+    setupBrushFor(context, stroke);
+    context.setLineDash([]);
+
+    var points = stroke.points.map(function (point) {
+      return {
+        x: point.x * canvas.width,
+        y: point.y * canvas.height
+      };
+    });
+
+    strokePointPath(context, points);
+  }
+
+  context.globalCompositeOperation = 'source-over';
+  context.globalAlpha = 1;
+}
+
+/* ---------- 撤销和恢复 ---------- */
+
+function getStoredStrokes(mid) {
+  var data = graffitiStore[mid];
+  return data && Array.isArray(data.strokes) ? data.strokes : [];
 }
 
 function saveHistory(mid) {
-if (!historyStacks[mid]) historyStacks[mid] = [];
-if (!redoStacks[mid]) redoStacks[mid] = [];
-var snapshot = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
-historyStacks[mid].push(snapshot);
-if (historyStacks[mid].length > MAX_HISTORY) {
-historyStacks[mid].shift();
-}
-redoStacks[mid] = [];
-}
+  if (mid === null || mid === undefined) return;
 
-function undo() {
-var mid = getCurrentMesId();
-if (!mid) { toast('无法撤销'); return; }
-if (!historyStacks[mid] || historyStacks[mid].length === 0) {
-toast('没有可撤销的操作');
-return;
-}
-if (!redoStacks[mid]) redoStacks[mid] = [];
-var current = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
-redoStacks[mid].push(current);
-var prev = historyStacks[mid].pop();
-graffitiStore[mid].strokes = prev;
-redrawCurrentCanvas();
-toast('已撤销');
-}
+  if (!historyStacks[mid]) historyStacks[mid] = [];
+  historyStacks[mid].push(clone(getStoredStrokes(mid)));
 
-function redo() {
-var mid = getCurrentMesId();
-if (!mid) { toast('无法恢复'); return; }
-if (!redoStacks[mid] || redoStacks[mid].length === 0) {
-toast('没有可恢复的操作');
-return;
-}
-if (!historyStacks[mid]) historyStacks[mid] = [];
-var current = JSON.parse(JSON.stringify(graffitiStore[mid].strokes));
-historyStacks[mid].push(current);
-var next = redoStacks[mid].pop();
-graffitiStore[mid].strokes = next;
-redrawCurrentCanvas();
-toast('已恢复');
+  if (historyStacks[mid].length > MAX_HISTORY) {
+    historyStacks[mid].shift();
+  }
+
+  /* 只有新绘制或清除才清空恢复记录，redo 不调用本函数。 */
+  redoStacks[mid] = [];
 }
 
 function getCurrentMesId() {
-if (!lastCanvas) {
-var all = document.querySelectorAll('.stg-canvas');
-if (all.length > 0) lastCanvas = all[all.length - 1];
-}
-return lastCanvas ? getMesId(lastCanvas) : null;
+  if (lastCanvas && lastCanvas.isConnected) {
+    return getMesId(lastCanvas);
+  }
+
+  if (lastEditedMid !== null) return lastEditedMid;
+
+  var canvases = document.querySelectorAll('#chat .stg-canvas');
+  if (!canvases.length) return null;
+  return getMesId(canvases[canvases.length - 1]);
 }
 
-function redrawCurrentCanvas() {
-if (!lastCanvas) return;
-var mid = getMesId(lastCanvas);
-if (!mid || !graffitiStore[mid]) return;
-redrawCanvas(lastCanvas, graffitiStore[mid]);
+function redrawMessage(mid) {
+  var messages = document.querySelectorAll('#chat .mes');
+  for (var i = 0; i < messages.length; i++) {
+    if (messages[i].getAttribute('mesid') !== String(mid)) continue;
+
+    var canvas = setupCanvas(messages[i]);
+    if (canvas) {
+      redrawCanvas(canvas, {strokes: getStoredStrokes(mid)});
+    }
+  }
 }
 
-function getPos(cv, e) {
-var r = cv.getBoundingClientRect();
-return {
-x: (e.clientX - r.left) * (cv.width / r.width),
-y: (e.clientY - r.top) * (cv.height / r.height)
-};
+function undo() {
+  if (pressing || shapeDrawing) return;
+  var mid = getCurrentMesId();
+
+  if (mid === null || !historyStacks[mid] || !historyStacks[mid].length) {
+    toast('没有可撤销的操作');
+    return;
+  }
+
+  if (!redoStacks[mid]) redoStacks[mid] = [];
+  redoStacks[mid].push(clone(getStoredStrokes(mid)));
+
+  graffitiStore[mid] = {
+    strokes: historyStacks[mid].pop()
+  };
+
+  lastEditedMid = mid;
+  redrawMessage(mid);
+  toast('已撤销');
 }
 
-function redrawCanvas(cv, data) {
-var ctx = cv.getContext('2d');
-ctx.clearRect(0, 0, cv.width, cv.height);
-var w = cv.width;
-var h = cv.height;
-for (var s = 0; s < data.strokes.length; s++) {
-var stroke = data.strokes[s];
-if (!stroke.points || stroke.points.length < 1) continue;
-if (stroke.tool === 'shape') {
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = stroke.opacity || 1.0;
-ctx.strokeStyle = stroke.color;
-ctx.lineWidth = stroke.size;
-ctx.lineCap = 'round';
-ctx.lineJoin = 'round';
-ctx.beginPath();
-var first = stroke.points[0];
-ctx.moveTo(first.x * w, first.y * h);
-for (var p = 1; p < stroke.points.length; p++) {
-ctx.lineTo(stroke.points[p].x * w, stroke.points[p].y * h);
-}
-if (stroke.shapeMode === 'ellipse' || stroke.shapeMode === 'rect') {
-ctx.closePath();
-}
-ctx.stroke();
-} else {
-setupBrushFor(ctx, stroke);
-ctx.beginPath();
-var first2 = stroke.points[0];
-ctx.moveTo(first2.x * w, first2.y * h);
-for (var p2 = 1; p2 < stroke.points.length; p2++) {
-ctx.lineTo(stroke.points[p2].x * w, stroke.points[p2].y * h);
-}
-ctx.stroke();
-}
-}
-ctx.globalCompositeOperation = 'source-over';
-ctx.globalAlpha = 1;
+function redo() {
+  if (pressing || shapeDrawing) return;
+  var mid = getCurrentMesId();
+
+  if (mid === null || !redoStacks[mid] || !redoStacks[mid].length) {
+    toast('没有可恢复的操作');
+    return;
+  }
+
+  if (!historyStacks[mid]) historyStacks[mid] = [];
+  historyStacks[mid].push(clone(getStoredStrokes(mid)));
+
+  if (historyStacks[mid].length > MAX_HISTORY) {
+    historyStacks[mid].shift();
+  }
+
+  graffitiStore[mid] = {
+    strokes: redoStacks[mid].pop()
+  };
+
+  lastEditedMid = mid;
+  redrawMessage(mid);
+  toast('已恢复');
 }
 
 function clearAll() {
-var all = document.querySelectorAll('.stg-canvas');
-for (var i = 0; i < all.length; i++) {
-var ctx = all[i].getContext('2d');
-ctx.clearRect(0, 0, all[i].width, all[i].height);
-var mid = getMesId(all[i]);
-if (mid !== null && graffitiStore[mid]) {
-saveHistory(mid);
-graffitiStore[mid].strokes = [];
-}
-}
-toast('\u5DF2\u6E05\u9664\u6240\u6709\u6D82\u9E26');
+  if (pressing || shapeDrawing) return;
+
+  var keys = Object.keys(graffitiStore);
+  for (var i = 0; i < keys.length; i++) {
+    var mid = keys[i];
+    if (!getStoredStrokes(mid).length) continue;
+    saveHistory(mid);
+    graffitiStore[mid] = {strokes: []};
+  }
+
+  var canvases = document.querySelectorAll('#chat .stg-canvas');
+  for (var j = 0; j < canvases.length; j++) {
+    var context = canvases[j].getContext('2d');
+    context.clearRect(0, 0, canvases[j].width, canvases[j].height);
+  }
+
+  toast('已清除所有涂鸦');
 }
 
-function saveData() {
-var keys = Object.keys(graffitiStore);
-for (var i = 0; i < keys.length; i++) {
-var d = graffitiStore[keys[i]];
-if (!d.strokes || d.strokes.length === 0) {
-delete graffitiStore[keys[i]];
-}
-}
-var count = Object.keys(graffitiStore).length;
-if (count > MAX_GRAFFITI) {
-toast('\u6D82\u9E26\u592A\u591A\u4E86\uFF01(' + count + '/' + MAX_GRAFFITI +') \u8BF7\u5148\u6E05\u9664\u4E00\u4E9B', 3500);
-return;
-}
-try {
-var c = getCtx();
-if (c && c.chatMetadata) {
-if (!c.chatMetadata.extensions) {
-c.chatMetadata.extensions = {};
-}
-c.chatMetadata.extensions[PLUGIN_ID] = JSON.parse(JSON.stringify(graffitiStore));
-try { if (c.saveChat) c.saveChat(); } catch (e) {}
-try { if (window.saveChatConditional) window.saveChatConditional(); } catch (e) {}
-try { if (window.saveChat) window.saveChat(); } catch (e) {}
-try { if (c.saveMetadata) c.saveMetadata(); } catch (e) {}
-try { if (window.saveMetadataDebounced) window.saveMetadataDebounced(); } catch (e) {}
-}
-} catch (e) {
-console.warn('[STG] save error', e);
-}
-try {
-var cid = getChatId();
-if (cid) {
-localStorage.setItem('stg_' + cid, JSON.stringify(graffitiStore));
-}
-} catch (e) {}
-toast('\u5DF2\u4FDD\u5B58\uFF01(' + count + '/' + MAX_GRAFFITI + ')');
+/* ---------- 数据保存和加载 ---------- */
+
+async function saveData() {
+  if (pressing || shapeDrawing) {
+    toast('请先松手，再保存');
+    return;
+  }
+
+  /*
+   * 保存副本时过滤空记录，不删除内存里的条目，
+   * 避免保存后撤销或恢复找不到对应楼层。
+   */
+  var snapshot = {};
+  Object.keys(graffitiStore).forEach(function (mid) {
+    var strokes = getStoredStrokes(mid);
+    if (strokes.length) snapshot[mid] = {strokes: clone(strokes)};
+  });
+
+  var count = Object.keys(snapshot).length;
+  if (count > MAX_GRAFFITI) {
+    toast(
+      '涂鸦太多了！(' + count + '/' + MAX_GRAFFITI + ') 请先清除一些',
+      3500
+    );
+    return;
+  }
+
+  var localSaved = false;
+  var chatSaved = false;
+
+  try {
+    var cid = getChatId();
+    if (cid !== null) {
+      localStorage.setItem('stg_' + cid, JSON.stringify(snapshot));
+      localSaved = true;
+    }
+  } catch (error) {
+    console.warn('[STG] local save:', error);
+  }
+
+  try {
+    var context = getCtx();
+    if (context && context.chatMetadata) {
+      if (!context.chatMetadata.extensions) {
+        context.chatMetadata.extensions = {};
+      }
+      context.chatMetadata.extensions[PLUGIN_ID] = clone(snapshot);
+
+      if (typeof context.saveChat === 'function') {
+        await context.saveChat();
+        chatSaved = true;
+      } else if (typeof context.saveMetadata === 'function') {
+        await context.saveMetadata();
+        chatSaved = true;
+      }
+    }
+  } catch (error) {
+    console.warn('[STG] chat save:', error);
+  }
+
+  if (chatSaved) {
+    toast('已保存！(' + count + '/' + MAX_GRAFFITI + ')');
+  } else if (localSaved) {
+    toast('已保存到本机！(' + count + '/' + MAX_GRAFFITI + ')');
+  } else {
+    toast('保存失败，涂鸦仍保留在当前页面', 3500);
+  }
 }
 
 function loadData() {
-graffitiStore = {};
-try {
-var c = getCtx();
-if (c && c.chatMetadata && c.chatMetadata.extensions && c.chatMetadata.extensions[PLUGIN_ID]) {
-graffitiStore = JSON.parse(JSON.stringify(c.chatMetadata.extensions[PLUGIN_ID]));
-return;
-}
-} catch (e) {}
-try {
-var cid = getChatId();
-if (cid) {
-var raw = localStorage.getItem('stg_' + cid);
-if (raw) {
-graffitiStore = JSON.parse(raw);
-}
-}
-} catch (e) {}
+  graffitiStore = {};
+  historyStacks = {};
+  redoStacks = {};
+  lastEditedMid = null;
+
+  try {
+    var context = getCtx();
+    var extensions = context &&
+      context.chatMetadata &&
+      context.chatMetadata.extensions;
+
+    if (extensions && extensions[PLUGIN_ID]) {
+      graffitiStore = clone(extensions[PLUGIN_ID]);
+      return;
+    }
+  } catch (error) {
+    console.warn('[STG] metadata load:', error);
+  }
+
+  try {
+    var cid = getChatId();
+    if (cid !== null) {
+      var raw = localStorage.getItem('stg_' + cid);
+      if (raw) {
+        var data = JSON.parse(raw);
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          graffitiStore = data;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[STG] local load:', error);
+  }
 }
 
 function getChatId() {
-try {
-var c = getCtx();
-if (c && c.chatId) return String(c.chatId);
-if (c && c.characters && c.activeCharacter !== undefined) {
-return 'char_' + c.activeCharacter;
-}
-} catch (e) {}
-return null;
+  try {
+    var context = getCtx();
+    if (!context) return null;
+
+    if (context.chatId !== undefined && context.chatId !== null &&
+        context.chatId !== '') {
+      return String(context.chatId);
+    }
+
+    if (typeof context.getCurrentChatId === 'function') {
+      var currentId = context.getCurrentChatId();
+      if (currentId !== undefined && currentId !== null && currentId !== '') {
+        return String(currentId);
+      }
+    }
+
+    /* 保留旧版使用过的本机存储键兼容路径。 */
+    if (context.characters && context.activeCharacter !== undefined) {
+      return 'char_' + context.activeCharacter;
+    }
+  } catch (error) {
+    console.warn('[STG] chat id:', error);
+  }
+  return null;
 }
 
 function restoreAll() {
-var keys = Object.keys(graffitiStore);
-for (var i = 0; i < keys.length; i++) {
-var mid = keys[i];
-var mes = document.querySelector('#chat .mes[mesid="' + mid + '"]');
-if (!mes) continue;
-var cv = setupCanvas(mes);
-if (!cv) continue;
-redrawCanvas(cv, graffitiStore[mid]);
-}
+  var messages = document.querySelectorAll('#chat .mes');
+  for (var i = 0; i < messages.length; i++) {
+    var mid = messages[i].getAttribute('mesid');
+    if (mid === null || !graffitiStore[mid]) continue;
+
+    var canvas = setupCanvas(messages[i]);
+    if (canvas) redrawCanvas(canvas, graffitiStore[mid]);
+  }
 }
 
 function bindChatChange() {
-try {
-var c = getCtx();
-if (c && c.eventSource && c.event_types) {
-var evt = c.event_types.CHAT_CHANGED || c.event_types.CHATLOADED;
-if (evt) {
-c.eventSource.on(evt, function () {
-exitDraw();
-loadData();
-restoreAll();
-});
-}
-}
-} catch (e) {}
+  try {
+    var context = getCtx();
+    if (!context || !context.eventSource || !context.event_types) return;
+
+    var event = context.event_types.CHAT_CHANGED ||
+      context.event_types.CHATLOADED;
+
+    if (event) {
+      context.eventSource.on(event, function () {
+        exitDraw();
+        loadData();
+        restoreAll();
+      });
+    }
+  } catch (error) {
+    console.warn('[STG] chat event:', error);
+  }
 }
 
 function observeNew() {
-var chat = document.getElementById('chat');
-if (!chat) return;
-var obs = new MutationObserver(function (muts) {
-for (var m = 0; m < muts.length; m++) {
-var added = muts[m].addedNodes;
-for (var n = 0; n < added.length; n++) {
-var node = added[n];
-if (node.nodeType !== 1) continue;
-var mes = null;
-if (node.classList && node.classList.contains('mes')) {
-mes = node;
-} else if (node.querySelector) {
-mes = node.querySelector('.mes');
+  var chat = byId('chat');
+  if (!chat) return;
+
+  var observer = new MutationObserver(function (mutations) {
+    for (var m = 0; m < mutations.length; m++) {
+      var added = mutations[m].addedNodes;
+
+      for (var n = 0; n < added.length; n++) {
+        var node = added[n];
+        if (node.nodeType !== 1) continue;
+
+        var messages = [];
+        if (node.classList && node.classList.contains('mes')) {
+          messages.push(node);
+        } else if (node.querySelectorAll) {
+          messages = Array.prototype.slice.call(node.querySelectorAll('.mes'));
+        }
+
+        for (var i = 0; i < messages.length; i++) {
+          var message = messages[i];
+          var mid = message.getAttribute('mesid');
+
+          if (mid !== null && graffitiStore[mid]) {
+            var canvas = setupCanvas(message);
+            if (canvas) redrawCanvas(canvas, graffitiStore[mid]);
+          } else if (drawing) {
+            setupCanvas(message);
+          }
+        }
+      }
+    }
+  });
+
+  observer.observe(chat, {childList: true, subtree: true});
 }
-if (!mes) continue;
-var mid = mes.getAttribute('mesid');
-if (mid && graffitiStore[mid]) {
-var cv = setupCanvas(mes);
-if (cv) redrawCanvas(cv, graffitiStore[mid]);
-} else if (drawing) {
-setupCanvas(mes);
+
+/* ---------- 所有状态声明完成之后启动 ---------- */
+
+var poll = null;
+var startupTime = Date.now();
+
+function fire() {
+  if (initDone || !document.body) return;
+  initDone = true;
+
+  if (poll !== null) {
+    clearInterval(poll);
+    poll = null;
+  }
+
+  try {
+    startPlugin();
+  } catch (error) {
+    console.warn('[STG] init error:', error);
+    toast('涂鸦插件初始化失败，请保留当前文件用于排查', 5000);
+  }
 }
-}
-}
-});
-obs.observe(chat, {childList: true, subtree: true});
+
+poll = setInterval(function () {
+  if (
+    document.body &&
+    (byId('chat') || Date.now() - startupTime > 5000)
+  ) {
+    fire();
+  }
+}, 300);
+
+try {
+  var startupContext = getCtx();
+  if (
+    startupContext &&
+    startupContext.eventSource &&
+    startupContext.event_types &&
+    startupContext.event_types.APP_READY
+  ) {
+    startupContext.eventSource.on(
+      startupContext.event_types.APP_READY,
+      fire
+    );
+  }
+} catch (error) {
+  console.warn('[STG] ready event:', error);
 }
 
 })();
