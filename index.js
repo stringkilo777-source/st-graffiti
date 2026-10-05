@@ -423,6 +423,7 @@ function makeToolbar() {
     ['mouse', '\uD83D\uDDB1'],
     ['sep1'],
     ['brush', '\uD83D\uDD8C'],
+    ['smudge', '晕'],
     ['eraser', '\u2B55'],
     ['sep2'],
     ['undo', '↶'],
@@ -1487,25 +1488,28 @@ function enterDraw() {
 }
 
 function exitDraw() {
-  clearWetCanvas();
   drawing = false;
   deactivateEyedropper(false);
-  pressing = false;
-  lastCanvas = null;
-  currentStroke = null;
-  shapeDrawing = false;
+  clearWetCanvas();
+
   hideElement('stg-palette');
   hideBrushSettings();
   hideElement('stg-utility-menu');
   hideShapeToolbar();
+
   var bar = byId('stg-toolbar');
   if (bar) bar.classList.remove('stg-show');
+
   var fab = byId('stg-fab');
   if (fab) fab.style.display = 'flex';
+
   updatePointer();
+
   Array.prototype.forEach.call(
     document.querySelectorAll('.stg-shape-preview'),
-    function (element) { element.remove(); }
+    function (element) {
+      element.remove();
+    }
   );
 }
 
@@ -1598,12 +1602,14 @@ function getMesId(canvas) {
 function getToolWidth() {
   if (tool === 'eraser') return eraserWidth;
   if (tool === 'shape') return penWidth;
+  if (tool === 'smudge') return penWidth;
   return brushType === 'highlighter' ? highlighterWidth : penWidth;
 }
 
 function getToolOpacity() {
   if (tool === 'eraser') return 1;
   if (tool === 'shape') return penOpacity;
+  if (tool === 'smudge') return penOpacity;
   return brushType === 'highlighter' ? highlighterOpacity : penOpacity;
 }
 
@@ -1617,36 +1623,386 @@ function setBrush(context) {
   context.lineWidth = getToolWidth();
 }
 
+/* ---------- 旧笔画兼容 ---------- */
+
 function setupBrushFor(context, stroke) {
   context.lineCap = 'round';
   context.lineJoin = 'round';
   context.globalCompositeOperation =
     stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+
   var fallback = (
-    stroke.tool === 'highlighter' || stroke.brushType === 'highlighter'
+    stroke.tool === 'highlighter' ||
+    stroke.brushType === 'highlighter'
   ) ? 0.3 : 1;
+
   context.globalAlpha = stroke.tool === 'eraser' ? 1 :
     (typeof stroke.opacity === 'number' ? stroke.opacity : fallback);
-  context.strokeStyle = stroke.tool === 'eraser' ? '#000000' : stroke.color;
+
+  context.strokeStyle =
+    stroke.tool === 'eraser' ? '#000000' : stroke.color;
+
   context.lineWidth = stroke.size;
 }
+
+/* ---------- 图章画笔公共工具 ---------- */
+
+function stgNumber(value, fallback, min, max) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clamp(value, min, max)
+    : fallback;
+}
+
+function stgPressure(point) {
+  return stgNumber(point.pressure, 1, 0.2, 1);
+}
+
+/*
+ * 固定种子的随机数：
+ * 同一笔在预览、落笔、撤销恢复后具有相同的纹理。
+ */
+function stgRandom(seed) {
+  var state = (seed >>> 0) || 1;
+
+  return function () {
+    state = (
+      Math.imul(state, 1664525) + 1013904223
+    ) >>> 0;
+
+    return state / 4294967296;
+  };
+}
+
+/*
+ * 硬度 100：实心圆。
+ * 硬度 0：从中心向边缘连续衰减。
+ *
+ * 使用径向渐变，不依赖 Android WebView 对 ctx.filter 的支持。
+ */
+function stgMakeTip(size, hardness, color) {
+  var tip = document.createElement('canvas');
+
+  var pixels = clamp(Math.ceil(size * 2), 32, 256);
+  tip.width = pixels;
+  tip.height = pixels;
+
+  var context = tip.getContext('2d');
+  var center = pixels / 2;
+  var radius = center - 1;
+  var hard = stgNumber(hardness, 100, 0, 100) / 100;
+
+  if (hard >= 1) {
+    context.fillStyle = '#ffffff';
+  } else {
+    var gradient = context.createRadialGradient(
+      center, center, radius * hard,
+      center, center, radius
+    );
+
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = gradient;
+  }
+
+  context.beginPath();
+  context.arc(center, center, radius, 0, Math.PI * 2);
+  context.fill();
+
+  context.globalCompositeOperation = 'source-in';
+  context.fillStyle = validColor(color) ? color : '#000000';
+  context.fillRect(0, 0, pixels, pixels);
+  context.globalCompositeOperation = 'source-over';
+
+  return tip;
+}
+
+/*
+ * 沿折线路径按固定距离盖章。
+ * 剩余距离跨 pointermove 采样点保留，避免每段起点重复打点。
+ * pressure 用于改变笔尖直径；间距按设置大小计算。
+ */
+function stgWalkStamps(stroke, width, height, step, callback) {
+  var points = stroke.points;
+  if (!points || !points.length) return;
+
+  var first = points[0];
+  var previousX = first.x * width;
+  var previousY = first.y * height;
+  var previousPressure = stgPressure(first);
+
+  callback(previousX, previousY, previousPressure);
+
+  var remaining = step;
+
+  for (var i = 1; i < points.length; i++) {
+    var point = points[i];
+    var x = point.x * width;
+    var y = point.y * height;
+    var pressure = stgPressure(point);
+
+    var dx = x - previousX;
+    var dy = y - previousY;
+    var length = Math.sqrt(dx * dx + dy * dy);
+
+    if (length > 0.0001) {
+      var distance = remaining;
+
+      while (distance <= length) {
+        var fraction = distance / length;
+
+        callback(
+          previousX + dx * fraction,
+          previousY + dy * fraction,
+          previousPressure +
+            (pressure - previousPressure) * fraction
+        );
+
+        distance += step;
+      }
+
+      remaining = distance - length;
+    }
+
+    previousX = x;
+    previousY = y;
+    previousPressure = pressure;
+  }
+}
+
+/* ---------- 图章笔 / 橡皮 ---------- */
+
+function stgPaintStampStroke(canvas, stroke) {
+  if (!stroke.points || !stroke.points.length) return;
+
+  var size = stgNumber(stroke.size, 3, 1, 200);
+  var spacing = stgNumber(stroke.spacing, 10, 1, 100);
+  var hardness = stgNumber(stroke.hardness, 100, 0, 100);
+  var flow = stgNumber(stroke.flow, 100, 0, 100) / 100;
+  var opacity = stgNumber(stroke.opacity, 1, 0, 1);
+  var isEraser = stroke.tool === 'eraser';
+
+  if (flow === 0 || opacity === 0) return;
+
+  var step = Math.max(0.5, size * spacing / 100);
+  var tip = stgMakeTip(
+    size,
+    hardness,
+    isEraser ? '#000000' : stroke.color
+  );
+
+  /*
+   * 整笔先绘制到透明层。
+   * 流量影响每枚图章，不透明度在整笔合成时应用一次。
+   */
+  var layer = document.createElement('canvas');
+  layer.width = canvas.width;
+  layer.height = canvas.height;
+
+  var layerContext = layer.getContext('2d');
+  var random = stgRandom(stroke.seed);
+
+  stgWalkStamps(
+    stroke,
+    canvas.width,
+    canvas.height,
+    step,
+    function (x, y, pressure) {
+      var diameter = size * pressure;
+
+      // 轻微透明度变化，产生可重复的笔触纹理。
+      layerContext.globalAlpha =
+        flow * (isEraser ? 1 : 0.94 + random() * 0.06);
+
+      layerContext.drawImage(
+        tip,
+        x - diameter / 2,
+        y - diameter / 2,
+        diameter,
+        diameter
+      );
+    }
+  );
+
+  var context = canvas.getContext('2d');
+  context.save();
+
+  context.globalCompositeOperation =
+    isEraser ? 'destination-out' : 'source-over';
+  context.globalAlpha = opacity;
+  context.drawImage(layer, 0, 0);
+
+  context.restore();
+}
+
+/* ---------- 涂抹笔 ---------- */
+
+function stgPaintSmudgeStroke(canvas, stroke) {
+  if (!stroke.points || stroke.points.length < 2) return;
+
+  var size = stgNumber(stroke.size, 3, 1, 200);
+  var hardness = stgNumber(stroke.hardness, 50, 0, 100);
+  var spacing = stgNumber(stroke.spacing, 10, 1, 100);
+
+  /*
+   * 大跨度移动拆成小步。
+   * 涂抹步长最多为笔径的 25%，避免快速滑动断成几块。
+   */
+  var step = Math.max(
+    0.5,
+    Math.min(size * spacing / 100, size * 0.25)
+  );
+
+  var context = canvas.getContext('2d');
+  var patch = document.createElement('canvas');
+  var patchContext = patch.getContext('2d');
+
+  var small = document.createElement('canvas');
+  var smallContext = small.getContext('2d');
+
+  var tip = stgMakeTip(size, hardness, '#ffffff');
+  var previous = null;
+
+  stgWalkStamps(
+    stroke,
+    canvas.width,
+    canvas.height,
+    step,
+    function (x, y, pressure) {
+      if (!previous) {
+        previous = {x: x, y: y};
+        return;
+      }
+
+      var diameter = Math.max(1, size * pressure);
+      var pixels = Math.max(2, Math.ceil(diameter));
+      var sourceLeft = Math.floor(previous.x - pixels / 2);
+      var sourceTop = Math.floor(previous.y - pixels / 2);
+
+      /*
+       * 只读取画布内的像素，画布边缘之外保持透明。
+       * 不从页面背景或聊天文字取色。
+       */
+      var left = Math.max(0, sourceLeft);
+      var top = Math.max(0, sourceTop);
+      var right = Math.min(canvas.width, sourceLeft + pixels);
+      var bottom = Math.min(canvas.height, sourceTop + pixels);
+
+      if (right > left && bottom > top) {
+        patch.width = pixels;
+        patch.height = pixels;
+
+        var image = context.getImageData(
+          left, top, right - left, bottom - top
+        );
+
+        patchContext.putImageData(
+          image,
+          left - sourceLeft,
+          top - sourceTop
+        );
+
+        /*
+         * 缩小再放大，产生轻微模糊。
+         * 不依赖 ctx.filter，兼容不支持 Canvas filter 的 WebView。
+         */
+        small.width = Math.max(1, Math.floor(pixels / 2));
+        small.height = Math.max(1, Math.floor(pixels / 2));
+
+        smallContext.imageSmoothingEnabled = true;
+        smallContext.drawImage(
+          patch, 0, 0, small.width, small.height
+        );
+
+        patchContext.clearRect(0, 0, pixels, pixels);
+        patchContext.imageSmoothingEnabled = true;
+        patchContext.drawImage(
+          small, 0, 0, pixels, pixels
+        );
+
+        // 圆形笔尖遮罩，避免出现方形像素块。
+        patchContext.globalCompositeOperation = 'destination-in';
+        patchContext.drawImage(tip, 0, 0, pixels, pixels);
+        patchContext.globalCompositeOperation = 'source-over';
+
+        context.save();
+        context.globalCompositeOperation = 'source-over';
+        context.globalAlpha = 0.5;
+
+        context.drawImage(
+          patch,
+          x - diameter / 2,
+          y - diameter / 2,
+          diameter,
+          diameter
+        );
+
+        context.restore();
+      }
+
+      previous = {x: x, y: y};
+    }
+  );
+}
+
+/* ---------- 统一笔画重放入口 ---------- */
+
+function stgPaintStroke(canvas, stroke) {
+  if (!stroke || !Array.isArray(stroke.points) ||
+      !stroke.points.length) return;
+
+  if (stroke.engine === 'stamp-v1') {
+    if (stroke.tool === 'smudge') {
+      stgPaintSmudgeStroke(canvas, stroke);
+    } else {
+      stgPaintStampStroke(canvas, stroke);
+    }
+    return;
+  }
+
+  // 旧存档和形状仍然使用原来的路径算法。
+  var context = canvas.getContext('2d');
+  var points = stroke.points.map(function (point) {
+    return {
+      x: point.x * canvas.width,
+      y: point.y * canvas.height
+    };
+  });
+
+  context.save();
+  setupBrushFor(context, stroke);
+  context.setLineDash([]);
+  strokePointPath(context, points);
+  context.restore();
+}
+
+/* ---------- 湿画布状态 ---------- */
 
 var wetCanvas = null;
 var wetOwner = null;
 var wetPointerId = null;
+var wetOwnerOpacity = '';
+var wetFrame = null;
 
 function clearWetCanvas() {
   var owner = wetOwner;
   var pointerId = wetPointerId;
 
+  if (wetFrame !== null) {
+    cancelAnimationFrame(wetFrame);
+    wetFrame = null;
+  }
+
+  if (owner) owner.style.opacity = wetOwnerOpacity;
+
   wetOwner = null;
   wetPointerId = null;
+  wetOwnerOpacity = '';
 
   if (wetCanvas && wetCanvas.parentNode) {
     wetCanvas.parentNode.removeChild(wetCanvas);
   }
-  wetCanvas = null;
 
+  wetCanvas = null;
   pressing = false;
   currentStroke = null;
   lastCanvas = null;
@@ -1666,7 +2022,10 @@ function clearWetCanvas() {
   }
 }
 
-function createWetCanvas(canvas, opacity) {
+function createWetCanvas(canvas) {
+  wetOwner = canvas;
+  wetOwnerOpacity = canvas.style.opacity;
+
   wetCanvas = document.createElement('canvas');
   wetCanvas.className = 'stg-wet-canvas';
   wetCanvas.width = canvas.width;
@@ -1674,106 +2033,36 @@ function createWetCanvas(canvas, opacity) {
 
   Object.assign(wetCanvas.style, {
     position: 'absolute',
-    left: '0',
-    top: '0',
-    width: '100%',
-    height: '100%',
+    left: canvas.offsetLeft + 'px',
+    top: canvas.offsetTop + 'px',
+    width: canvas.clientWidth + 'px',
+    height: canvas.clientHeight + 'px',
     pointerEvents: 'none',
     zIndex: '15',
-    opacity: String(opacity)
+    opacity: '1'
   });
 
   canvas.parentNode.appendChild(wetCanvas);
+  wetCanvas.getContext('2d').drawImage(canvas, 0, 0);
+
+  /*
+   * 预览包含已有画面，所以临时隐藏底层的显示，
+   * 防止半透明颜色被显示两遍。
+   * opacity:0 不影响指针捕获。
+   */
+  canvas.style.opacity = '0';
 }
 
 function getWetPressure(e) {
-  /*
-   * 普通手指和鼠标保持设置宽度。
-   * 触控笔才使用真实压感；pointerup 的零压力不参与计算。
-   */
   if (e.pointerType !== 'pen') return 1;
 
   var pressure = Number(e.pressure);
   if (!Number.isFinite(pressure)) return 1;
 
-  return 0.2 + 0.8 * Math.max(0, Math.min(1, pressure));
+  return 0.2 + 0.8 * clamp(pressure, 0, 1);
 }
 
-function renderWetStroke(stroke) {
-  if (!wetCanvas || !stroke || !stroke.points.length) return;
-
-  var context = wetCanvas.getContext('2d');
-  var width = wetCanvas.width;
-  var height = wetCanvas.height;
-  var points = stroke.points;
-
-  context.clearRect(0, 0, width, height);
-  context.globalCompositeOperation = 'source-over';
-  context.globalAlpha = 1;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-
-  var color = stroke.tool === 'eraser' ? '#ffffff' : stroke.color;
-  context.strokeStyle = color;
-  context.fillStyle = color;
-
-  var first = points[0];
-  var startX = first.x * width;
-  var startY = first.y * height;
-
-  if (points.length === 1) {
-    context.beginPath();
-    context.arc(
-      startX,
-      startY,
-      stroke.size * first.pressure / 2,
-      0,
-      Math.PI * 2
-    );
-    context.fill();
-    return;
-  }
-
-  /*
-   * 每次先清空，再用不透明颜色重绘当前整笔。
-   * 分段只用于改变压感宽度，透明度统一由 wetCanvas.style.opacity 控制。
-   */
-  for (var i = 1; i < points.length; i++) {
-    var previous = points[i - 1];
-    var next = points[i];
-
-    var endX = (previous.x + next.x) * width / 2;
-    var endY = (previous.y + next.y) * height / 2;
-
-    context.lineWidth =
-      stroke.size * (previous.pressure + next.pressure) / 2;
-
-    context.beginPath();
-    context.moveTo(startX, startY);
-    context.quadraticCurveTo(
-      previous.x * width,
-      previous.y * height,
-      endX,
-      endY
-    );
-    context.stroke();
-
-    startX = endX;
-    startY = endY;
-  }
-
-  var last = points[points.length - 1];
-  context.lineWidth = stroke.size * last.pressure;
-  context.beginPath();
-  context.moveTo(startX, startY);
-  context.quadraticCurveTo(
-    last.x * width,
-    last.y * height,
-    last.x * width,
-    last.y * height
-  );
-  context.stroke();
-}
+/* ---------- 指针绑定 ---------- */
 
 function bindCanvas(canvas) {
   var gesture = null;
@@ -1788,7 +2077,6 @@ function bindCanvas(canvas) {
     var previous = points[points.length - 1];
     var x = pos.x / canvas.width;
     var y = pos.y / canvas.height;
-
     var pressure = usePressure
       ? getWetPressure(e)
       : previous.pressure;
@@ -1802,15 +2090,26 @@ function bindCanvas(canvas) {
     points.push({x: x, y: y, pressure: pressure});
   }
 
-  function renderShape(e) {
-    if (!wetCanvas || !gesture) return;
+  function renderNow() {
+    if (!gesture || wetOwner !== canvas || !wetCanvas) return;
 
-    var pos = getPos(canvas, e);
     var context = wetCanvas.getContext('2d');
 
-    context.clearRect(0, 0, wetCanvas.width, wetCanvas.height);
+    context.save();
     context.globalCompositeOperation = 'source-over';
     context.globalAlpha = 1;
+    context.clearRect(0, 0, wetCanvas.width, wetCanvas.height);
+    context.drawImage(canvas, 0, 0);
+    context.restore();
+
+    if (gesture.kind === 'stroke') {
+      stgPaintStroke(wetCanvas, gesture.stroke);
+      return;
+    }
+
+    context.save();
+    context.globalCompositeOperation = 'source-over';
+    context.globalAlpha = gesture.opacity * 0.7;
     context.strokeStyle = gesture.color;
     context.lineWidth = gesture.size;
     context.lineCap = 'round';
@@ -1823,12 +2122,36 @@ function bindCanvas(canvas) {
         gesture.mode,
         gesture.start.x,
         gesture.start.y,
-        pos.x,
-        pos.y
+        gesture.end.x,
+        gesture.end.y
       )
     );
 
-    context.setLineDash([]);
+    context.restore();
+  }
+
+  function abortGesture(error) {
+    gesture = null;
+    clearWetCanvas();
+
+    if (error) {
+      console.warn('[STG] brush engine:', error);
+      toast('本次笔画未提交，请重试');
+    }
+  }
+
+  function queueRender() {
+    if (wetFrame !== null) return;
+
+    wetFrame = requestAnimationFrame(function () {
+      wetFrame = null;
+
+      try {
+        renderNow();
+      } catch (error) {
+        abortGesture(error);
+      }
+    });
   }
 
   canvas.addEventListener('pointerdown', function (e) {
@@ -1836,63 +2159,61 @@ function bindCanvas(canvas) {
     if (wetPointerId !== null) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
-    e.preventDefault();
-
     var rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    var pos = getPos(canvas, e);
-
-    if (tool === 'shape' && shapeMode) {
-      gesture = {
-        kind: 'shape',
-        mode: shapeMode,
-        start: pos,
-        color: penColor,
-        size: penWidth
-      };
-
-      shapeDrawing = true;
-      shapePreviewCanvas = canvas;
-      shapeStartX = pos.x;
-      shapeStartY = pos.y;
-
-      createWetCanvas(canvas, penOpacity * 0.7);
-    } else {
-      var stroke = {
-        tool: tool,
-        brushType: brushType,
-        color: penColor,
-        size: getToolWidth(),
-        opacity: getToolOpacity(),
-        points: [{
-          x: pos.x / canvas.width,
-          y: pos.y / canvas.height,
-          pressure: getWetPressure(e)
-        }]
-      };
-
-      gesture = {kind: 'stroke', stroke: stroke};
-      pressing = true;
-      currentStroke = stroke;
-
-      createWetCanvas(
-        canvas,
-        tool === 'eraser' ? 0.35 : stroke.opacity
-      );
-      renderWetStroke(stroke);
-    }
-
-    wetOwner = canvas;
-    wetPointerId = e.pointerId;
-    lastCanvas = canvas;
+    e.preventDefault();
 
     try {
+      var pos = getPos(canvas, e);
+
+      if (tool === 'shape' && shapeMode) {
+        gesture = {
+          kind: 'shape',
+          mode: shapeMode,
+          start: pos,
+          end: pos,
+          color: penColor,
+          size: penWidth,
+          opacity: penOpacity
+        };
+
+        shapeDrawing = true;
+        shapePreviewCanvas = canvas;
+        shapeStartX = pos.x;
+        shapeStartY = pos.y;
+      } else {
+        var stroke = {
+          engine: 'stamp-v1',
+          tool: tool,
+          brushType: brushType,
+          color: penColor,
+          size: getToolWidth(),
+          opacity: getToolOpacity(),
+          hardness: brushHardness,
+          spacing: brushSpacing,
+          flow: brushFlow,
+          seed: Math.floor(Math.random() * 4294967296),
+          points: [{
+            x: pos.x / canvas.width,
+            y: pos.y / canvas.height,
+            pressure: getWetPressure(e)
+          }]
+        };
+
+        gesture = {kind: 'stroke', stroke: stroke};
+        pressing = true;
+        currentStroke = stroke;
+      }
+
+      createWetCanvas(canvas);
+      wetPointerId = e.pointerId;
+      lastCanvas = canvas;
+
       canvas.setPointerCapture(e.pointerId);
+      renderNow();
     } catch (error) {
-      gesture = null;
-      clearWetCanvas();
-      console.warn('[STG] capture pointer:', error);
+      abortGesture(error);
     }
   });
 
@@ -1906,7 +2227,8 @@ function bindCanvas(canvas) {
     e.preventDefault();
 
     if (gesture.kind === 'shape') {
-      renderShape(e);
+      gesture.end = getPos(canvas, e);
+      queueRender();
       return;
     }
 
@@ -1914,15 +2236,13 @@ function bindCanvas(canvas) {
       ? e.getCoalescedEvents()
       : [];
 
-    if (samples.length) {
-      for (var i = 0; i < samples.length; i++) {
-        appendPoint(samples[i], true);
-      }
-    } else {
-      appendPoint(e, true);
+    for (var i = 0; i < samples.length; i++) {
+      appendPoint(samples[i], true);
     }
 
-    renderWetStroke(gesture.stroke);
+    // 保留主事件末端坐标；完全相同的点由 appendPoint 去重。
+    appendPoint(e, true);
+    queueRender();
   });
 
   canvas.addEventListener('pointerup', function (e) {
@@ -1935,52 +2255,75 @@ function bindCanvas(canvas) {
     e.preventDefault();
 
     try {
+      var mid = getMesId(canvas);
+      if (mid === null) return;
+
+      var stroke;
+
       if (gesture.kind === 'shape') {
         var pos = getPos(canvas, e);
-
-        /* 使用原有形状落笔和历史记录逻辑。 */
-        drawShape(
-          canvas,
+        var points = getShapePoints(
+          gesture.mode,
           gesture.start.x,
           gesture.start.y,
           pos.x,
           pos.y
         );
-        return;
+
+        if (!points.length) return;
+
+        stroke = {
+          tool: 'shape',
+          shapeMode: gesture.mode,
+          color: gesture.color,
+          size: gesture.size,
+          opacity: gesture.opacity,
+          points: points.map(function (point) {
+            return {
+              x: point.x / canvas.width,
+              y: point.y / canvas.height
+            };
+          })
+        };
+      } else {
+        // 松手不使用归零的压感。
+        appendPoint(e, false);
+        stroke = gesture.stroke;
+
+        // 涂抹笔只点击、不移动，不产生历史记录。
+        if (stroke.tool === 'smudge' && stroke.points.length < 2) return;
       }
 
-      /* 松手坐标保留上一采样点的压感，不使用松手时的零压力。 */
-      appendPoint(e, false);
+      if (wetFrame !== null) {
+        cancelAnimationFrame(wetFrame);
+        wetFrame = null;
+      }
 
-      var stroke = gesture.stroke;
-      var mid = getMesId(canvas);
-      if (mid === null) return;
+      /*
+       * 先在临时画布完成最终计算。
+       * 失败时不修改主画布，也不新增笔画记录。
+       */
+      var wetContext = wetCanvas.getContext('2d');
+      wetContext.clearRect(0, 0, wetCanvas.width, wetCanvas.height);
+      wetContext.drawImage(canvas, 0, 0);
+      stgPaintStroke(wetCanvas, stroke);
 
       if (!graffitiStore[mid]) graffitiStore[mid] = {strokes: []};
-
-      var points = stroke.points.map(function (point) {
-        return {
-          x: point.x * canvas.width,
-          y: point.y * canvas.height
-        };
-      });
+      saveHistory(mid);
 
       var context = canvas.getContext('2d');
-
       context.save();
-      try {
-        setupBrushFor(context, stroke);
-        context.setLineDash([]);
+      context.globalCompositeOperation = 'source-over';
+      context.globalAlpha = 1;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(wetCanvas, 0, 0);
+      context.restore();
 
-        /* 主画布只在这里整笔绘制一次。 */
-        strokePointPath(context, points);
-      } finally {
-        context.restore();
-      }
-
-      saveHistory(mid);
       graffitiStore[mid].strokes.push(stroke);
       lastEditedMid = mid;
+    } catch (error) {
+      console.warn('[STG] commit stroke:', error);
+      toast('本次笔画提交失败，请重试');
     } finally {
       gesture = null;
       clearWetCanvas();
@@ -1993,14 +2336,14 @@ function bindCanvas(canvas) {
       e.pointerId !== wetPointerId
     ) return;
 
-    gesture = null;
-
-    /* 取消时只清除预览，主画布和历史记录均不产生新笔画。 */
-    clearWetCanvas();
+    abortGesture();
   }
 
   canvas.addEventListener('pointercancel', cancelGesture);
   canvas.addEventListener('lostpointercapture', cancelGesture);
+
+  // 移动端绘画时禁止浏览器把拖动画布识别成页面滚动。
+  canvas.style.touchAction = 'none';
 }
 
 function getPos(canvas, e) {
@@ -2128,31 +2471,28 @@ function drawShape(canvas, x1, y1, x2, y2) {
 
 function redrawCanvas(canvas, data) {
   var context = canvas.getContext('2d');
+
+  context.save();
+  context.globalCompositeOperation = 'source-over';
+  context.globalAlpha = 1;
   context.clearRect(0, 0, canvas.width, canvas.height);
+  context.restore();
 
-  var strokes = data && Array.isArray(data.strokes) ? data.strokes : [];
+  var strokes = data && Array.isArray(data.strokes)
+    ? data.strokes
+    : [];
 
+  /*
+   * 必须按原顺序重放。
+   * 涂抹笔读取的是此前已经绘制出来的像素。
+   */
   for (var i = 0; i < strokes.length; i++) {
-    var stroke = strokes[i];
-    if (!stroke || !Array.isArray(stroke.points) || !stroke.points.length) {
-      continue;
-    }
-
-    setupBrushFor(context, stroke);
-    context.setLineDash([]);
-
-    var points = stroke.points.map(function (point) {
-      return {
-        x: point.x * canvas.width,
-        y: point.y * canvas.height
-      };
-    });
-
-    strokePointPath(context, points);
+    stgPaintStroke(canvas, strokes[i]);
   }
 
   context.globalCompositeOperation = 'source-over';
   context.globalAlpha = 1;
+  context.setLineDash([]);
 }
 
 /* ---------- 撤销和恢复 ---------- */
